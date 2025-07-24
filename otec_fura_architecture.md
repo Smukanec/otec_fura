@@ -23,7 +23,7 @@ otec_fura/
 ├── data/
 │   └── docs_cleaned/       # normalizované znalosti
 ├── main.py                 # FastAPI runner (uvicorn)
-├── requirements.txt
+├── pyproject.toml       # project metadata and dependencies
 └── config.py
 
 
@@ -65,10 +65,12 @@ app.include_router(context_router)
 # uvicorn main:app --host 0.0.0.0 --port 8090
 
 
-# requirements.txt (základ)
+# Závislosti (pyproject.toml)
 fastapi
 uvicorn
 sentence-transformers
 faiss-cpu
 pandas
 python-multipart
+requests
+beautifulsoup4
