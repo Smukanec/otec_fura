@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List
+import json
 
 try:
     from sentence_transformers import SentenceTransformer, util
@@ -27,7 +28,7 @@ def _load_corpus() -> List[str]:
         for line in path.read_text(encoding="utf-8").splitlines():
             if line.strip():
                 try:
-                    texts.append(eval(line).get("text", ""))
+                    texts.append(json.loads(line).get("text", ""))
                 except Exception:
                     pass
     return texts
