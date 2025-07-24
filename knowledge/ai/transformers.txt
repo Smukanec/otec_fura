@@ -1,0 +1,1 @@
+Transformers jsou architektura deep learningu založená na mechanismu attention.
