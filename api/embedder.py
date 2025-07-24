@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List
 import json
 
 try:
@@ -20,7 +19,7 @@ def _get_model():
     return _model
 
 
-def _load_corpus() -> List[str]:
+def _load_corpus() -> list[str]:
     texts = []
     for path in KNOWLEDGE_DIR.rglob("*.txt"):
         texts.append(path.read_text(encoding="utf-8"))
@@ -34,7 +33,7 @@ def _load_corpus() -> List[str]:
     return texts
 
 
-def embed_and_query(query: str, top_k: int = 3) -> List[str]:
+def embed_and_query(query: str, top_k: int = 3) -> list[str]:
     """Vrátí nejpodobnější texty z korpusu pomocí embeddingu."""
     if SentenceTransformer is None:
         return []
