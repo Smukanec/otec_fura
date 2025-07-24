@@ -1,3 +1,4 @@
+# Mirror of dependencies defined in pyproject.toml
 fastapi
 uvicorn
 sentence-transformers
