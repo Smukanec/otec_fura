@@ -1,76 +1,87 @@
-# Adresářová struktura pro Otce Furu (server 2)
+# Architektura Jarvik + Otec Fura: Detailní popis funkcí modulů
 
-otec_fura/
-├── api/
-│   ├── __init__.py
-│   ├── get_context.py      # hlavní API endpoint pro dotaz
-│   ├── get_memory.py       # čte paměť podle userID
-│   ├── search_knowledge.py # hledá ve knowledge složce
-│   ├── embedder.py         # sentence-transformers model
-│   └── web_crawler.py      # volitelný web search modul
-├── memory/
-│   ├── public.jsonl
-│   └── jiri/
-│       ├── private.jsonl
-│       └── meta.json
-├── knowledge/
-│   ├── ai/
-│   ├── auto/
-│   ├── zdraví/
-│   └── ...
-├── embeddings/
-│   └── faiss_index.bin     # embedding index
-├── data/
-│   └── docs_cleaned/       # normalizované znalosti
-├── main.py                 # FastAPI runner (uvicorn)
-├── pyproject.toml       # project metadata and dependencies
-└── config.py
+## 🏢 Servery a jejich role
 
+### Server 1: Jarvik (Primární AI asistent)
 
-# API endpoint: get_context.py
+* **HW**: GPU, 1 CPU, 64 GB RAM, 2 TB SSD
+* **Moduly**:
 
-from fastapi import APIRouter, Request
-from api.get_memory import load_memory_context
-from api.search_knowledge import search_knowledge
-from api.embedder import embed_and_query
+  * **Jarvik Core** (Flask / FastAPI backend)
+  * **Ollama / vLLM**: Lokální LLM (LLaMA 3, Dolphin, OpenHermes)
+  * **RAG vrstva**: dotazy na paměť + znalosti
+  * **Paměť**: public.jsonl / private.jsonl
+  * **Knowledge Base**: složka `knowledge/` s texty
+  * **Connectors**: IMAP, kalendáře, soubory
+  * **DevLab**: Generování kódu, Codex
 
-router = APIRouter()
+### Server 2: Otec Fura (Znalostní backend)
 
-@router.post("/get_context")
-async def get_context(request: Request):
-    body = await request.json()
-    query = body.get("query")
-    user = body.get("user", "anonymous")
+* **HW**: 2 CPU, 144 GB RAM, HDD / SSD pro indexaci
+* **Moduly**:
 
-    memory_ctx = load_memory_context(user, query)
-    knowledge_ctx = search_knowledge(query)
-    embed_ctx = embed_and_query(query)
+  * **Webový crawler**: sběr dat z webu (např. beautifulsoup4 + requests)
+  * **Embedder**: all-MiniLM-L6-v2 (sentence-transformers)
+  * **Indexer**: FAISS indexy (tematický, doménový, timestamp)
+  * **API**: odpovídá na dotazy z Jarvika přes HTTP
+  * **Knowledge store**: synchronizované knihovny v textové formě
 
-    return {
-        "memory": memory_ctx,
-        "knowledge": knowledge_ctx,
-        "embedding": embed_ctx
-    }
+## 🤖 AI komponenty
 
+### Jarvik (vLLM / Ollama API)
 
-# FastAPI spouštěč (main.py)
+* **Modely**:
 
-from fastapi import FastAPI
-from api.get_context import router as context_router
+  * Meta-LLaMA-3-8B-Instruct
+  * OpenHermes 2.5 (Mistral)
+  * DeepSeek Coder 6.7B
+* **Dotazová logika**:
 
-app = FastAPI()
-app.include_router(context_router)
+  1. Vstup: dotaz uživatele (přes UI nebo API)
+  2. Předzpracování: kontrola klíčových slov, režimů (soukromý, öffentlich)
+  3. Paměť: dotaz na JSONL historii (např. GPT memory format)
+  4. Knowledge: RAG vyhledávání v textových souborech
+  5. Odeslání dotazu na model (OpenAI API / Ollama / vLLM)
+  6. Výstup: odpověď + uložení do paměti
 
-# Spustit pomocí:
-# uvicorn main:app --host 0.0.0.0 --port 8090
+### Otec Fura
 
+* **Zdroje dat**:
 
-# Závislosti (pyproject.toml)
-fastapi
-uvicorn
-sentence-transformers
-faiss-cpu
-pandas
-python-multipart
-requests
-beautifulsoup4
+  * ručně určené domény (seznam .txt)
+  * automatické tématické vyhledávání
+* **Moduly**:
+
+  * **crawler.py**: hloubkový sběr, ořez reklamy, ukládání do raw/
+  * **embedder.py**: vektorová reprezentace (sentence-transformer)
+  * **indexer.py**: staví FAISS index, tříděný podle témat
+  * **query.py**: příjem dotazu, vrácení nejrelevantnějších pasáží
+* **Fungování**:
+
+  1. Jarvik pošle dotaz
+  2. API server otce FURY najde vektor dotazu
+  3. Vyhledá nejbližší pasáže v indexu
+  4. Vrátí větší kontext pro odpověď
+  5. Jarvik doplní prompt a odpoví
+
+## 📊 Datová struktura
+
+* `memory/<user>/private.jsonl` – osobní paměť
+* `memory/public.jsonl` – veřejná znalost
+* `knowledge/` – .txt soubory v kategoriích
+* `web_corpus/` – strojově sesbírané webové texty
+* `indexes/` – FAISS vektorové indexy
+* `api/` – rozhraní pro dotaz na znalosti z Furů
+
+## 🚦 Komunikace
+
+* Jarvik → Otec Fura: `GET /query?q=...`
+* Fura → Jarvik: JSON s kontextem (text, URL, timestamp)
+* Fura může běžet paralelně na jiném portu / serveru
+
+## 🔹 Shrnutí
+
+* Jarvik: myslí, chatuje, generuje
+* Fura: zná věci, indexuje, obohacuje odpovědi
+* AI: LLM odpovídá na dotazy s vektorovým kontextem z paměti + webu
+* Komunikace oddělena – znalosti můžou různě růst nezávisle
