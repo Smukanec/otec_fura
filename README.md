@@ -9,3 +9,7 @@ Install dependencies and execute:
 ```bash
 pytest -q
 ```
+
+## License
+
+Otec Fura is released under the [MIT License](LICENSE).
