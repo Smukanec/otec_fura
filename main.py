@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from api.get_context import router as context_router
+from api.auth import router as auth_router
 
 app = FastAPI(title="Otec Fura")
 app.include_router(context_router)
+app.include_router(auth_router)
 
 
 @app.get("/")
