@@ -8,3 +8,4 @@ python-multipart
 requests
 beautifulsoup4
 pytest
+email-validator
