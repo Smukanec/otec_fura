@@ -44,7 +44,7 @@ def register(req: RegisterRequest):
     users = load_users()
     if req.username in users:
         raise HTTPException(status_code=400, detail="Uživatel už existuje")
-    
+    print(f"[INFO] Ověřovací kód pro {req.username}: {code}")
     code = secrets.token_hex(3)
     VERIFICATION_CODES[req.username] = code
 
