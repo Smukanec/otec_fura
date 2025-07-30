@@ -1,96 +1,36 @@
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
-import hashlib, secrets, json, os
 
-router = APIRouter()
+import jwt
+import datetime
+from flask import Blueprint, request, jsonify
+from config import SECRET_KEY
+import os
+import json
+
+auth_router = Blueprint("auth", __name__)
 
 USERS_FILE = "users.json"
-VERIFICATION_CODES = {}  # zatím v paměti
-
-# ---------------------
-# Pomocné funkce
-# ---------------------
 
 def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    if not os.path.exists(USERS_FILE):
+        return {}
+    with open(USERS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f, indent=2)
+@auth_router.route("/auth/token", methods=["POST"])
+def generate_token():
+    data = request.get_json()
+    username = data.get("username")
+    password = data.get("password")
 
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
-
-# ---------------------
-# Datové modely
-# ---------------------
-
-class RegisterRequest(BaseModel):
-    username: str
-    email: EmailStr
-    password: str
-
-class VerifyRequest(BaseModel):
-    username: str
-    code: str
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
-
-# ---------------------
-# Endpointy
-# ---------------------
-
-@router.post("/register")
-def register(req: RegisterRequest):
     users = load_users()
+    user = users.get(username)
+    if not user or user["password"] != password or not user.get("verified", False):
+        return jsonify({"error": "Neplatné přihlášení"}), 403
 
-    if req.username in users:
-        return {"detail": "Uživatel už existuje"}
+    token = jwt.encode({
+        "username": username,
+        "role": user.get("role", "user"),
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=12)
+    }, SECRET_KEY, algorithm="HS256")
 
-    # Vytvoření ověřovacího kódu
-    code = secrets.token_hex(3)
-    VERIFICATION_CODES[req.username] = code
-
-    users[req.username] = {
-        "email": req.email,
-        "password_hash": hash_password(req.password),
-        "verified": False
-    }
-    save_users(users)
-    print(f"[INFO] Ověřovací kód pro {req.username}: {code}")
-
-    return {"status": "registered", "message": "Zadej ověřovací kód, který ti byl vygenerován."}
-
-@router.post("/verify")
-def verify(req: VerifyRequest):
-    users = load_users()
-    if req.username not in users:
-        raise HTTPException(status_code=404, detail="Uživatel neexistuje")
-
-    expected = VERIFICATION_CODES.get(req.username)
-    if expected != req.code:
-        raise HTTPException(status_code=400, detail="Neplatný ověřovací kód")
-
-    users[req.username]["verified"] = True
-    save_users(users)
-    return {"status": "ověřeno"}
-
-@router.post("/login")
-def login(req: LoginRequest):
-    users = load_users()
-    if req.username not in users:
-        raise HTTPException(status_code=404, detail="Uživatel neexistuje")
-
-    user = users[req.username]
-    if not user.get("verified"):
-        raise HTTPException(status_code=403, detail="Uživatel není ověřen")
-
-    if hash_password(req.password) != user.get("password_hash"):
-        raise HTTPException(status_code=403, detail="Špatné heslo")
-
-    return {"status": "přihlášen", "user": req.username}
+    return jsonify({"token": token, "user": username})
