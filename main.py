@@ -5,7 +5,7 @@ from api.crawler_router import router as crawler_router
 
 app = FastAPI(title="Otec Fura")
 
-# ✅ Připojení všech routerů
+# Připojení všech routerů
 app.include_router(context_router)
 app.include_router(auth_router)
 app.include_router(crawler_router)
