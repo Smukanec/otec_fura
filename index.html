@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="utf-8">
+    <title>Otec Fura</title>
+</head>
+<body>
+    <div id="status">Nepřihlášený</div>
+    <form id="loginForm">
+        <input type="text" id="username" placeholder="Uživatelské jméno" required>
+        <input type="password" id="password" placeholder="Heslo" required>
+        <button type="submit">Přihlásit</button>
+    </form>
+    <button id="logoutBtn" style="display:none;">Odhlásit</button>
+
+    <script>
+    const statusEl = document.getElementById('status');
+    const loginForm = document.getElementById('loginForm');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    async function apiFetch(url, options = {}) {
+        const token = localStorage.getItem('api_key');
+        options.headers = options.headers || {};
+        if (token) {
+            options.headers['Authorization'] = `Bearer ${token}`;
+        }
+        return fetch(url, options);
+    }
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        const resp = await fetch('/auth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password })
+        });
+        if (resp.ok) {
+            const data = await resp.json();
+            localStorage.setItem('api_key', data.api_key);
+            statusEl.textContent = username;
+            loginForm.style.display = 'none';
+            logoutBtn.style.display = 'block';
+        }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+        localStorage.removeItem('api_key');
+        statusEl.textContent = 'Nepřihlášený';
+        loginForm.style.display = 'block';
+        logoutBtn.style.display = 'none';
+    });
+    </script>
+</body>
+</html>
