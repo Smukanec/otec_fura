@@ -2,6 +2,11 @@ import sys
 import types
 import json
 import pytest
+import asyncio
+from pathlib import Path
+from fastapi import HTTPException
+
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 # Stub bcrypt to avoid external dependency in tests
 bcrypt_stub = types.SimpleNamespace(
@@ -11,12 +16,83 @@ bcrypt_stub = types.SimpleNamespace(
 )
 sys.modules["bcrypt"] = bcrypt_stub
 
-from fastapi.testclient import TestClient
 from main import app
 import api.auth as auth
 import middleware
 
-client = TestClient(app)
+
+class SimpleResponse:
+    def __init__(self, status_code, body):
+        self.status_code = status_code
+        self._body = body
+
+    def json(self):
+        return json.loads(self._body.decode())
+
+
+class SimpleClient:
+    def __init__(self, app):
+        self.app = app
+
+    def _request(self, method, path, json_body=None, headers=None):
+        headers = headers or {}
+        body_bytes = b""
+        header_list = [(k.lower().encode(), v.encode()) for k, v in headers.items()]
+        if json_body is not None:
+            body_bytes = json.dumps(json_body).encode()
+            header_list.append((b"content-type", b"application/json"))
+            header_list.append((b"content-length", str(len(body_bytes)).encode()))
+        else:
+            header_list.append((b"content-length", b"0"))
+
+        scope = {
+            "type": "http",
+            "asgi": {"spec_version": "2.1", "version": "3.0"},
+            "method": method,
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "headers": header_list,
+            "client": ("test", 123),
+            "server": ("testserver", 80),
+            "scheme": "http",
+        }
+
+        messages = []
+
+        async def receive():
+            nonlocal body_bytes
+            if body_bytes:
+                b = body_bytes
+                body_bytes = b""
+                return {"type": "http.request", "body": b, "more_body": False}
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            messages.append(message)
+
+        try:
+            asyncio.run(self.app(scope, receive, send))
+        except HTTPException as exc:  # pragma: no cover - handled similarly to TestClient
+            return SimpleResponse(exc.status_code, json.dumps({"detail": exc.detail}).encode())
+
+        status_code = 500
+        body = b""
+        for message in messages:
+            if message["type"] == "http.response.start":
+                status_code = message["status"]
+            elif message["type"] == "http.response.body":
+                body += message.get("body", b"")
+        return SimpleResponse(status_code, body)
+
+    def get(self, path, headers=None):
+        return self._request("GET", path, headers=headers)
+
+    def post(self, path, json=None, headers=None):
+        return self._request("POST", path, json_body=json, headers=headers)
+
+
+client = SimpleClient(app)
 
 
 @pytest.fixture(autouse=True)
@@ -74,11 +150,11 @@ def test_get_context(monkeypatch, auth_header):
 def test_crawl(monkeypatch, tmp_path, auth_header):
     class DummyModel:
         def encode(self, text):
-            return [0.1, 0.2]
+            return types.SimpleNamespace(tolist=lambda: [0.1, 0.2])
 
     monkeypatch.setattr("api.crawler_router._get_model", lambda: DummyModel())
     monkeypatch.setattr(
-        "api.web_crawler.crawl_url", lambda url, limit=500: ["dummy text"]
+        "api.crawler_router.crawl_url", lambda url: ["dummy text"]
     )
     index_file = tmp_path / "index.json"
     monkeypatch.setattr("api.crawler_router.WEB_INDEX_PATH", index_file)
@@ -107,3 +183,18 @@ def test_get_context_unauthorized(monkeypatch):
         "/get_context", json={"query": "transformers", "user": "jiri"}
     )
     assert resp.status_code == 401
+
+
+def test_register_does_not_return_api_key(users_file):
+    resp = client.post(
+        "/auth/register",
+        json={"username": "novak", "password": "tajne", "email": "novak@example.com"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "api_key" not in data
+
+    resp = client.post(
+        "/auth/token", json={"username": "novak", "password": "tajne"}
+    )
+    assert resp.status_code == 403
