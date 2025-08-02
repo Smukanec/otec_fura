@@ -198,3 +198,12 @@ def test_register_does_not_return_api_key(users_file):
         "/auth/token", json={"username": "novak", "password": "tajne"}
     )
     assert resp.status_code == 403
+
+
+def test_auth_me(auth_header):
+    resp = client.get("/auth/me", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["username"] == "tester"
+    assert data["email"] == "tester@example.com"
+    assert data["approved"] is True
