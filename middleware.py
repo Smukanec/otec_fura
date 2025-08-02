@@ -7,7 +7,11 @@ from pathlib import Path
 
 USERS_FILE = Path("data/users.json")
 
+
 def load_users():
+    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if not USERS_FILE.exists():
+        USERS_FILE.write_text("[]")
     return json.loads(USERS_FILE.read_text())
 
 def get_user_by_apikey(api_key: str):
