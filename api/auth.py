@@ -54,7 +54,7 @@ def register(data: RegisterRequest):
     }
     users.append(user)
     save_users(users)
-    return {"message": "Registrace úspěšná. Počkejte na schválení administrátorem.", "api_key": user["api_key"]}
+    return {"message": "Registrace úspěšná. API klíč obdržíte po schválení administrátorem."}
 
 # Endpoint pro přihlášení – vrátí API klíč
 @router.post("/auth/token")
