@@ -2,11 +2,11 @@ from fastapi import FastAPI
 from api.get_context import router as context_router
 from api.auth import router as auth_router
 from api.crawler_router import router as crawler_router
-from middleware import APIKeyMiddleware  # 👈 Přidáno
+from middleware import APIKeyMiddleware  # Přidáno
 
 app = FastAPI(title="Otec Fura")
 
-# 👇 Přidání middleware pro kontrolu API klíče
+# Middleware pro ověření API klíče
 app.add_middleware(APIKeyMiddleware)
 
 # Připojení všech routerů
