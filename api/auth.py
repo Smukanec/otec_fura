@@ -33,6 +33,13 @@ def load_users():
 def save_users(users):
     USERS_FILE.write_text(json.dumps(users, indent=2))
 
+def get_user_by_apikey(api_key: str):
+    users = load_users()
+    for user in users:
+        if user["api_key"] == api_key:
+            return user
+    return None
+
 def generate_api_key():
     return secrets.token_hex(16)  # např. "a8b7c9e3f1234d..."
 
@@ -71,3 +78,21 @@ def login(data: LoginRequest):
         raise HTTPException(status_code=403, detail="Účet čeká na schválení")
 
     return {"api_key": user["api_key"]}
+
+# Endpoint pro zjištění informací o uživateli podle API klíče
+@router.get("/auth/me")
+def auth_me(request: Request):
+    auth = request.headers.get("Authorization")
+    if not auth or not auth.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Chybí API klíč")
+
+    api_key = auth.replace("Bearer ", "")
+    user = get_user_by_apikey(api_key)
+    if not user:
+        raise HTTPException(status_code=401, detail="Neplatný API klíč")
+
+    return {
+        "username": user["username"],
+        "email": user["email"],
+        "approved": user.get("approved", False),
+    }

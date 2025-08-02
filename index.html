@@ -27,6 +27,20 @@
         return fetch(url, options);
     }
 
+    async function updateStatus() {
+        const resp = await apiFetch('/auth/me');
+        if (resp.ok) {
+            const data = await resp.json();
+            statusEl.textContent = data.approved ? `${data.username} (schválený)` : `${data.username} (čekající)`;
+            loginForm.style.display = 'none';
+            logoutBtn.style.display = 'block';
+        } else {
+            statusEl.textContent = 'Nepřihlášený';
+            loginForm.style.display = 'block';
+            logoutBtn.style.display = 'none';
+        }
+    }
+
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value;
@@ -39,18 +53,16 @@
         if (resp.ok) {
             const data = await resp.json();
             localStorage.setItem('api_key', data.api_key);
-            statusEl.textContent = username;
-            loginForm.style.display = 'none';
-            logoutBtn.style.display = 'block';
+            await updateStatus();
         }
     });
 
     logoutBtn.addEventListener('click', () => {
         localStorage.removeItem('api_key');
-        statusEl.textContent = 'Nepřihlášený';
-        loginForm.style.display = 'block';
-        logoutBtn.style.display = 'none';
+        updateStatus();
     });
+
+    updateStatus();
     </script>
 </body>
 </html>
