@@ -5,7 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import json
 from pathlib import Path
 
-USERS_FILE = Path("data/users.json")
+USERS_FILE = Path(__file__).resolve().parent / "data/users.json"
 
 
 def load_users():

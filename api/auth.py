@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 
 router = APIRouter()
-USERS_FILE = Path("data/users.json")
+USERS_FILE = Path(__file__).resolve().parents[1] / "data/users.json"
 
 # Vytvoř složku data, pokud neexistuje
 USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
