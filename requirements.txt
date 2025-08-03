@@ -1,12 +1,10 @@
 # Mirror of dependencies defined in pyproject.toml
-fastapi
-uvicorn
-sentence-transformers
+beautifulsoup4
 faiss-cpu
+fastapi
 pandas
+pytest
 python-multipart
 requests
-beautifulsoup4
-pytest
-email-validator
-PyJWT
+sentence-transformers
+uvicorn
