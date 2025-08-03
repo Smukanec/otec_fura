@@ -21,6 +21,19 @@ Install dependencies and execute:
 pytest -q
 ```
 
+## Dependency management
+
+Project dependencies are declared in `pyproject.toml`. To keep
+`requirements.txt` in sync, regenerate it whenever the dependency list
+changes:
+
+```bash
+python scripts/sync_requirements.py
+```
+
+Tools such as [pip-tools](https://github.com/jazzband/pip-tools) can also
+be used to compile a fully pinned `requirements.txt` if desired.
+
 ## License
 
 Otec Fura is released under the [MIT License](LICENSE).

@@ -1,4 +1,4 @@
-# Mirror of dependencies defined in pyproject.toml
+# Generated from pyproject.toml. Do not edit manually.
 fastapi
 uvicorn
 sentence-transformers
@@ -8,5 +8,3 @@ python-multipart
 requests
 beautifulsoup4
 pytest
-email-validator
-PyJWT
