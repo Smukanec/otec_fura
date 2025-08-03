@@ -1,4 +1,5 @@
 # Mirror of dependencies defined in pyproject.toml
+bcrypt
 beautifulsoup4
 faiss-cpu
 fastapi
