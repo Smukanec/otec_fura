@@ -12,6 +12,7 @@ dependencies = [
     "requests",
     "beautifulsoup4",
     "pytest",
+    "bcrypt",
 ]
 
 [build-system]
