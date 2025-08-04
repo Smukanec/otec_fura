@@ -34,7 +34,8 @@ if old_file.exists():
     env = os.environ.copy()
     env["PYTHONPATH"] = f"{root}:{tmp_path}"
     subprocess.run(
-        [sys.executable, str(root / "scripts" / "create_user.py"), "alice", "alice@example.com"],
+        [sys.executable, str(root / "scripts" / "create_user.py")],
+        input="alice\nalice@example.com\n",
         check=True,
         env=env,
         capture_output=True,
