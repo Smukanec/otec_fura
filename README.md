@@ -16,16 +16,16 @@ before an API key is issued. Once approved, obtain the API key using
 ## Creating users via script
 
 Administrators can create accounts directly using the provided helper script.
-A typical invocation looks like:
+Run the script and follow the prompts:
 
 ```bash
-./create_user.sh alice alice@example.com --approve
+./create_user.sh
 ```
 
-The final `--approve` flag is optional. When included, the user is marked as
-approved immediately and can use the returned API key. Omit the flag to create
-an unapproved account; in that case, set `"approved": true` manually in
-`data/users.json` when ready to activate the user.
+You will be asked for a username, email and password. Pass `--approve` to mark
+the user as approved immediately; otherwise the account will remain pending and
+you must edit `data/users.json` to set `"approved": true` when ready to activate
+the user.
 
 ## Running tests
 
