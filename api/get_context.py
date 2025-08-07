@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request
-from api.get_memory import load_memory_context
+from api.get_memory import append_to_memory
 from api.search_knowledge import search_knowledge
 from api.embedder import embed_and_query
 
