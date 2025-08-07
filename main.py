@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from api.get_context import router as context_router
 from api.auth import router as auth_router
 from api.crawler_router import router as crawler_router
-from user_endpoint import router as user_router  # ⬅️ Přidat
+from api.user_endpoint import router as user_router  # ⬅️ Přidat
 from middleware import APIKeyMiddleware
 
 app = FastAPI(title="Otec Fura")
