@@ -9,20 +9,17 @@ router = APIRouter()
 @router.post("/get_context")
 async def get_context(request: Request):
     body = await request.json()
-    query = body.get("query", "")
+    query = body.get("query", "") or ""
     user = body.get("user", "anonymous")
 
+    # 1) načti „relevantní“ paměť (jen to, co obsahuje query)
     memory_ctx = load_memory_context(user, query)
+    # 2) doplň ostatní kontexty
     knowledge_ctx = search_knowledge(query)
     embed_ctx = embed_and_query(query)
 
-    # pokus o zápis do paměti (nebrzdí odpověď)
-    try:
-        if query:
-            append_to_memory(user, query, "Zaznamenán dotaz přes /get_context.")
-    except Exception as e:
-        # jednoduchý log do konzole (u systemd uvidíš v journalctl)
-        print(f"[get_context] append_to_memory failed: {e}")
+    # 3) ZAPIŠ DO PAMĚTI – ať to jde vidět v souboru
+    append_to_memory(user, f"User '{user}' se ptal: {query}")
 
     return {
         "memory": memory_ctx,
