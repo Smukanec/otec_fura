@@ -1,52 +1,43 @@
 # api/get_memory.py
 import json
 from pathlib import Path
-from typing import List
+from datetime import datetime
 
-# /.../otec_fura/api/get_memory.py  →  PROJECT_ROOT = .../otec_fura
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-MEMORY_DIR = PROJECT_ROOT / "memory"
+MEMORY_DIR = Path(__file__).resolve().parent.parent / "memory"
 
-def _load_jsonl(file_path: Path) -> List[dict]:
+def _load_jsonl(file_path: Path) -> list[dict]:
     if not file_path.exists():
         return []
     with file_path.open("r", encoding="utf-8") as f:
-        lines = []
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                lines.append(json.loads(line))
-            except Exception:
-                # poškozená řádka? přeskoč
-                continue
-        return lines
+        return [json.loads(line) for line in f if line.strip()]
 
-def load_memory_context(user: str, query: str) -> List[str]:
-    """Vrátí relevantní řádky z public a user paměti, které obsahují query (case-insensitive)."""
+def load_memory_context(user: str, query: str) -> list[str]:
+    """
+    Vrátí jen ty řádky z paměti, které obsahují řetězec `query` (case-insensitive).
+    Proto když hledáš něco, co v paměti ještě není, seznam bude prázdný – to je v pořádku.
+    """
     q = (query or "").lower()
-    out: List[str] = []
+    results: list[str] = []
 
     public_file = MEMORY_DIR / "public.jsonl"
-    out += [it.get("text", "") for it in _load_jsonl(public_file) if q in it.get("text", "").lower()]
+    results += [item.get("text", "") for item in _load_jsonl(public_file) if q in item.get("text", "").lower()]
 
     user_file = MEMORY_DIR / user / "private.jsonl"
-    out += [it.get("text", "") for it in _load_jsonl(user_file) if q in it.get("text", "").lower()]
+    results += [item.get("text", "") for item in _load_jsonl(user_file) if q in item.get("text", "").lower()]
+    return results
 
-    return out
-
-def append_to_memory(user: str, text: str, note: str | None = None) -> None:
+def append_to_memory(user: str, text: str) -> None:
     """
-    Přidá řádku do user paměti (JSONL). Vytvoří složku/soubor pokud chybí.
-    Zapisuje jako {"text": "..."}; pokud je note, připojí ji na konec.
+    Přidá nový řádek do osobní paměti uživatele.
+    Signatura je DŮLEŽITÁ: append_to_memory(user, text)
     """
-    user = user.strip() or "anonymous"
-    target_dir = MEMORY_DIR / user
-    target_dir.mkdir(parents=True, exist_ok=True)
+    user_dir = MEMORY_DIR / user
+    user_dir.mkdir(parents=True, exist_ok=True)
+    private_file = user_dir / "private.jsonl"
 
-    target_file = target_dir / "private.jsonl"
-    payload = {"text": text if not note else f"{text} - {note}"}
-
-    with target_file.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    record = {
+        "text": text,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    with private_file.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
