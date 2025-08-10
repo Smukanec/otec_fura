@@ -1,43 +1,35 @@
-# middleware.py – Zajišťuje kontrolu API klíče pro každý požadavek
-
 from fastapi import Request, HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 import json
 from pathlib import Path
 
-USERS_FILE = Path(__file__).resolve().parent / "data/users.json"
+DATA_DIR = Path(__file__).resolve().parent / "data"
+USERS_FILE = DATA_DIR / "users.json"
 
-
-def load_users():
-    USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+def _load_users():
     if not USERS_FILE.exists():
-        USERS_FILE.write_text("[]")
-    return json.loads(USERS_FILE.read_text())
-
-def get_user_by_apikey(api_key: str):
-    users = load_users()
-    for user in users:
-        if user["api_key"] == api_key:
-            return user
-    return None
+        return []
+    return json.loads(USERS_FILE.read_text(encoding="utf-8"))
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Výjimka: nepoužívej kontrolu na tyto cesty
-        if request.url.path.startswith("/auth"):
+        # Allow-list: OPTIONS (CORS preflight) a root
+        if request.method == "OPTIONS" or request.url.path == "/":
             return await call_next(request)
 
-        auth = request.headers.get("Authorization")
-        if not auth or not auth.startswith("Bearer "):
+        auth = request.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Chybí API klíč")
 
-        api_key = auth.replace("Bearer ", "")
-        user = get_user_by_apikey(api_key)
-        if not user:
-            raise HTTPException(status_code=401, detail="Neplatný API klíč")
+        token = auth.split(" ", 1)[1].strip()
+        users = _load_users()
 
-        if not user.get("approved", False):
-            raise HTTPException(status_code=403, detail="Účet není schválen")
+        for u in users:
+            if u.get("api_key") == token:
+                if not u.get("approved", False):
+                    raise HTTPException(status_code=403, detail="Účet není schválen")
+                # připoj uživatele do request.state, ať je dostupný v handleru
+                request.state.user = u
+                return await call_next(request)
 
-        request.state.user = user  # může se hodit v dalších funkcích
-        return await call_next(request)
+        raise HTTPException(status_code=403, detail="Neplatný API klíč")
