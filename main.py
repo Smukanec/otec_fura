@@ -1,32 +1,19 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
-from api.get_context import router as context_router
-from api.auth import router as auth_router
-from api.crawler_router import router as crawler_router
-from api.user_endpoint import router as user_router  # ← /user endpoint
+# main.py
+from fastapi import FastAPI, Request
 from middleware import APIKeyMiddleware
+from api.get_context import router as context_router
+from user_endpoint import router as user_router
 
-app = FastAPI(title="Otec Fura")
+app = FastAPI(title="Otec Fura API")
 
-# CORS (případně přidej svoji doménu)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # nebo ["https://jarvik-ai.tech"]
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Ověření Bearer tokenu
+# middleware s kontrolou API klíče
 app.add_middleware(APIKeyMiddleware)
 
-# Routery
-app.include_router(user_router)      # /user
-app.include_router(context_router)   # /get_context
-app.include_router(auth_router)
-app.include_router(crawler_router)
-
 @app.get("/")
-async def root():
+async def root(request: Request):
+    # i kořen vyžaduje klíč (pokud ho pošleš, dostaneš 200 OK)
     return {"message": "Otec Fura API OK"}
+
+# endpoints
+app.include_router(user_router)
+app.include_router(context_router)
