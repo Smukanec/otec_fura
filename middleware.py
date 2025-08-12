@@ -1,48 +1,32 @@
 # middleware.py
-from fastapi import Request, HTTPException
-from starlette.middleware.base import BaseHTTPMiddleware
 import json
-from pathlib import Path
+from fastapi import Request
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
-USERS_FILE = Path(__file__).resolve().parent / "data" / "users.json"
-
-def _load_users():
-    if not USERS_FILE.exists():
-        return []
-    with USERS_FILE.open("r", encoding="utf-8") as f:
-        return json.load(f)
-
-def _extract_bearer_token(auth_header: str | None) -> str | None:
-    if not auth_header:
-        return None
-    parts = auth_header.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        return None
-    return parts[1]
-
-class APIKeyAuthMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, allow_paths: set[str] | None = None):
-        super().__init__(app)
-        self.allow_paths = allow_paths or set()
-
+class ApiKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-
-        # povolíme jen OpenAPI a root bez klíče (chceš-li je mít zavřené, odeber z allow_paths)
-        if path in self.allow_paths:
+        # whitelist cest bez auth
+        if request.url.path in ("/", "/openapi.json"):
             return await call_next(request)
 
-        token = _extract_bearer_token(request.headers.get("authorization"))
+        auth = request.headers.get("authorization", "")
+        if not auth.startswith("Bearer "):
+            return JSONResponse(status_code=401, content={"detail": "Chybí API klíč"})
 
-        if not token:
-            raise HTTPException(status_code=401, detail="Chybí API klíč")
+        token = auth.split(" ", 1)[1].strip()
 
-        users = _load_users()
-        user = next((u for u in users if u.get("api_key") == token), None)
+        # načtení uživatelů
+        try:
+            with open("data/users.json", "r", encoding="utf-8") as f:
+                users = json.load(f)
+        except Exception:
+            return JSONResponse(status_code=500, content={"detail": "Nelze načíst databázi uživatelů"})
 
-        if not user or not user.get("approved", False):
-            raise HTTPException(status_code=403, detail="Neplatný API klíč")
+        user = next((u for u in users if u.get("api_key") == token and u.get("approved")), None)
+        if not user:
+            return JSONResponse(status_code=403, content={"detail": "Neplatný API klíč"})
 
-        # Propaguj „aktuálního uživatele“ do request.state, aby si ho endpointy mohly přečíst
-        request.state.current_user = user
+        # povol průchod a předej user do state, kdybys ho chtěl číst v handlerech
+        request.state.user = user
         return await call_next(request)
