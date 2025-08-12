@@ -5,13 +5,16 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-USERS_FILE = Path("data/users.json")
+# Path to the JSON database of users. Using a Path relative to this file makes
+# the middleware resilient to the current working directory.
+USERS_FILE = Path(__file__).resolve().parent / "data" / "users.json"
 USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
 
-class ApiKeyMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, allow_paths=None):
+
+class APIKeyAuthMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, allow_paths: set[str] | None = None):
         super().__init__(app)
-        self.allow_paths = set(allow_paths or [])
+        self.allow_paths = allow_paths or set()
 
     async def dispatch(self, request: Request, call_next):
         # whitelist cest bez auth
@@ -38,5 +41,5 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
             return JSONResponse(status_code=401, content={"detail": "Neplatný API klíč"})
 
         # povol průchod a předej user do state, kdybys ho chtěl číst v handlerech
-        request.state.user = user
+        request.state.current_user = user
         return await call_next(request)
