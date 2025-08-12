@@ -9,8 +9,8 @@ router = APIRouter()
 @router.post("/get_context")
 async def get_context(request: Request):
     body = await request.json()
-    query: str = body.get("query", "") or ""
-    user: str = body.get("user", "anonymous") or "anonymous"
+    query: str = body.get("query", "")
+    user: str = body.get("user", "anonymous")
     remember: bool = bool(body.get("remember", False))
 
     memory_ctx = load_memory_context(user, query)
@@ -18,8 +18,7 @@ async def get_context(request: Request):
     embed_ctx = embed_and_query(query)
 
     if remember and query.strip():
-        # uložíme stručný „log“ do privátní paměti
-        append_to_memory(user, f"[get_context] {query}")
+        append_to_memory(user, f"{query} - Zaznamenán dotaz přes /get_context.")
 
     return {
         "memory": memory_ctx,
