@@ -1,20 +1,19 @@
 # user_endpoint.py
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 
 router = APIRouter()
 
 @router.get("/user")
 async def get_user(request: Request):
-    # middleware už ověřil klíč a uložil current_user
-    user = getattr(request.state, "current_user", None)
-    if not user:
-        # Teoreticky by se to stát nemělo – jen pojistka.
-        raise HTTPException(status_code=403, detail="Neplatný API klíč")
-    # neposíláme password_hash
+    u = getattr(request.state, "current_user", None)
+    # pokud by middleware nebyl u rootu, vrátíme 401/403 – ale díky middleware se sem bez usera nedostane
+    if not u:
+        return {"detail": "Neplatný API klíč"}
+    # nevracej password_hash
     return {
-        "username": user.get("username"),
-        "email": user.get("email"),
-        "api_key": user.get("api_key"),
-        "approved": user.get("approved"),
-        "created_at": user.get("created_at"),
+        "username": u.get("username"),
+        "email": u.get("email"),
+        "api_key": u.get("api_key"),
+        "approved": u.get("approved"),
+        "created_at": u.get("created_at"),
     }
