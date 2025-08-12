@@ -4,7 +4,7 @@ import json
 import pytest
 import asyncio
 from pathlib import Path
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
@@ -126,6 +126,16 @@ def test_root(auth_header):
     resp = client.get("/", headers=auth_header)
     assert resp.status_code == 200
     assert resp.json() == {"message": "Otec Fura API"}
+
+
+def test_current_user_in_state(auth_header):
+    @app.get("/me")
+    def me(request: Request):
+        return request.state.current_user
+
+    resp = client.get("/me", headers=auth_header)
+    assert resp.status_code == 200
+    assert resp.json()["username"] == "tester"
 
 
 def test_get_context(monkeypatch, auth_header):
