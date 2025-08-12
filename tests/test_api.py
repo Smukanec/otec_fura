@@ -167,6 +167,7 @@ def test_get_context(monkeypatch, auth_header):
     assert isinstance(data["memory"], list)
     assert isinstance(data["knowledge"], list)
     assert data["embedding"] == ["embedded:transformers"]
+    assert any("transformers" in snippet.lower() for snippet in data["knowledge"])
 
 
 def test_crawl(monkeypatch, tmp_path, auth_header):
