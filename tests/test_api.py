@@ -138,6 +138,18 @@ def test_current_user_in_state(auth_header):
     assert resp.json()["username"] == "tester"
 
 
+def test_user_endpoint(auth_header):
+    resp = client.get("/user", headers=auth_header)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["username"] == "tester"
+
+
+def test_user_endpoint_unauthorized():
+    resp = client.get("/user")
+    assert resp.status_code == 401
+
+
 def test_get_context(monkeypatch, auth_header):
     def dummy_embed(query: str, top_k: int = 3):
         return [f"embedded:{query}"]
