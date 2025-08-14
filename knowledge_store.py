@@ -4,23 +4,66 @@ import os, re, json, uuid, time, threading
 from dataclasses import dataclass, asdict
 from typing import List, Optional, Dict, Any, Tuple
 
+# --- Konfigurace přes env ---
 JSONL_PATH = os.environ.get("KNOWLEDGE_JSONL", "data/knowledge.jsonl")
 KNOWLEDGE_DIR = os.environ.get("KNOWLEDGE_DIR", "knowledge")
-SUPPORTED_EXT = {".md", ".txt"}
+SUPPORTED_EXT = {".md", ".txt", ".pdf"}  # PDF podpora
+PDF_MAX_PAGES = int(os.environ.get("PDF_MAX_PAGES", "30"))
+MAX_FILE_MB = float(os.environ.get("KNOWLEDGE_MAX_FILE_MB", "25"))
 
 def _now_ts() -> float:
     return time.time()
 
-def _read_text_file(path: str) -> Optional[str]:
+def _read_file_text_generic(path: str) -> Optional[str]:
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
             return f.read()
     except Exception:
         return None
 
+def _read_pdf_text(path: str) -> Optional[str]:
+    # 1) PyPDF2
+    try:
+        from PyPDF2 import PdfReader  # pip install PyPDF2
+        reader = PdfReader(path)
+        pages = min(len(reader.pages), max(1, PDF_MAX_PAGES))
+        out = []
+        for i in range(pages):
+            try:
+                t = reader.pages[i].extract_text() or ""
+            except Exception:
+                t = ""
+            if t.strip():
+                out.append(t)
+        txt = "\n\n".join(out).strip()
+        if txt:
+            return txt
+    except Exception:
+        pass
+    # 2) pdfminer.six (fallback)
+    try:
+        from pdfminer.high_level import extract_text  # pip install pdfminer.six
+        txt = extract_text(path)
+        return txt.strip() if txt and txt.strip() else None
+    except Exception:
+        pass
+    return None
+
+def _read_text_file(path: str) -> Optional[str]:
+    _, ext = os.path.splitext(path.lower())
+    try:
+        size_mb = os.path.getsize(path) / (1024 * 1024)
+        if size_mb > MAX_FILE_MB:
+            return None
+    except Exception:
+        pass
+    if ext == ".pdf":
+        return _read_pdf_text(path)
+    else:
+        return _read_file_text_generic(path)
+
 def _first_heading_or_name(path: str, text: str) -> str:
-    # # H1 / první ne-prázdný řádek, jinak název souboru
-    for line in text.splitlines():
+    for line in (text or "").splitlines():
         s = line.strip()
         if not s:
             continue
@@ -30,12 +73,11 @@ def _first_heading_or_name(path: str, text: str) -> str:
     return os.path.basename(path)
 
 def _tokenize(s: str) -> List[str]:
-    return re.findall(r"[a-zá-ž0-9]+", s.lower())
+    return re.findall(r"[a-zá-ž0-9]+", (s or "").lower())
 
 def _score(query: str, text: str, title: str = "") -> float:
-    # Lehký scorovací model: kombinace shody tokenů + substring boost v titulku
     q = _tokenize(query)
-    if not q: 
+    if not q:
         return 0.0
     tks = _tokenize(text)
     if not tks:
@@ -46,8 +88,7 @@ def _score(query: str, text: str, title: str = "") -> float:
     score = 0.0
     for qt in q:
         score += freq.get(qt, 0)
-    # bonus za přímý výskyt stringu
-    if query.lower() in text.lower():
+    if query.lower() in (text or "").lower():
         score += 3.0
     if title and query.lower() in title.lower():
         score += 2.0
@@ -126,7 +167,7 @@ class KnowledgeStore:
         scored: List[Tuple[float, KnowledgeItem]] = []
         with self._lock:
             for it in self.items:
-                if it.private and it.owner and user != it.owner:
+                if it.private and it.owner and user and user != it.owner:
                     continue
                 s = _score(query, it.content, it.title)
                 if s > 0:
@@ -135,44 +176,50 @@ class KnowledgeStore:
         return [it for _, it in scored[:max(1, top_k)]]
 
 class KnowledgeDirIndex:
-    """
-    Index z lokální složky KNOWLEDGE_DIR (recursively). Nezapíše do JSONL,
-    drží se jen v paměti, aby šlo „okamžitě číst znalosti ze souborů“.
-    """
+    """Rekurzivně indexuje KNOWLEDGE_DIR (md/txt/pdf) do paměti."""
     def __init__(self, root: str = KNOWLEDGE_DIR):
         self.root = root
         self.docs: List[KnowledgeItem] = []
-        self._scan()
+        self.reindex()
 
-    def _scan(self):
+    def _acceptable(self, path: str) -> bool:
+        _, ext = os.path.splitext(path.lower())
+        if ext not in SUPPORTED_EXT:
+            return False
+        try:
+            size_mb = os.path.getsize(path) / (1024 * 1024)
+            if size_mb > MAX_FILE_MB:
+                return False
+        except Exception:
+            pass
+        return True
+
+    def reindex(self):
         self.docs.clear()
         if not os.path.isdir(self.root):
             return
         for base, _, files in os.walk(self.root):
             for fn in files:
-                _, ext = os.path.splitext(fn)
-                if ext.lower() not in SUPPORTED_EXT:
-                    continue
                 path = os.path.join(base, fn)
-                text = _read_text_file(path)
-                if not text:
+                if not self._acceptable(path):
                     continue
-                title = _first_heading_or_name(path, text)
+                txt = _read_text_file(path)
+                if not txt:
+                    continue
+                title = _first_heading_or_name(path, txt)
+                rel = os.path.relpath(path, self.root)
                 self.docs.append(
                     KnowledgeItem(
                         id=str(uuid.uuid4()),
                         title=title,
-                        content=text,
+                        content=txt,
                         tags=[],
                         private=False,
                         owner=None,
-                        source=f"file:{os.path.relpath(path, self.root)}",
+                        source=f"file:{rel}",
                         created_at=_now_ts(),
                     )
                 )
-
-    def reindex(self):
-        self._scan()
 
     def search(self, query: str, top_k: int = 5) -> List[KnowledgeItem]:
         if not query.strip():
