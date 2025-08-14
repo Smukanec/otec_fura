@@ -7,6 +7,16 @@ from api.auth import router as auth_router
 from api.crawler_router import router as crawler_router
 
 app = FastAPI(title="Otec Fura API")
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://jarvik-ai.tech", "https://www.jarvik-ai.tech"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
 
 # Povolené cesty bez auth (chceš-li vše zamknout, dej prázdnou množinu)
 allow = {"/openapi.json", "/docs", "/redoc", "/favicon.ico", "/auth"}
