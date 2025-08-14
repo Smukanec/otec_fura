@@ -2,6 +2,20 @@
 
 A simple FastAPI service providing contextual information from memory and knowledge base.
 
+## Structure
+
+otec_fura/
+├─ main.py                 ← nahraď
+├─ knowledge_store.py      ← nový
+├─ data/
+│  └─ users.json           ← už máš (api_key, username, approved,…)
+├─ knowledge/              ← sem dej *.md / *.txt (kurátorované články)
+│  ├─ apqp.md
+│  └─ … další
+└─ memory/
+   └─ public.jsonl         ← volitelné (veřejné „věty“ do memory)
+
+
 ## Endpoints
 
 - `POST /get_context` – returns memory, knowledge and embedding context for a query.
