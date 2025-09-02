@@ -168,6 +168,22 @@ async def v1_chat(req: ChatReq):
     }
 
 
+# ====== /v1/embeddings ======
+@router.post("/v1/embeddings")
+async def v1_embeddings(payload: dict):
+    """Proxy embeddings requests to the model gateway."""
+    url = f"{MODEL_API_BASE}/embeddings"
+    headers = {
+        "Authorization": f"Bearer {MODEL_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as c:
+        r = await c.post(url, headers=headers, json=payload)
+        if r.status_code >= 400:
+            raise HTTPException(status_code=502, detail=r.text)
+        return r.json()
+
+
 # ====== /ask (kompatibilní s původním UI) ======
 @router.post("/ask")
 async def ask(req: AskReq):
