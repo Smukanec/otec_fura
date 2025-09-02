@@ -1,17 +1,13 @@
 # -*- coding: utf-8 -*-
 import os, io, json, time, pickle, logging, re, math
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, TYPE_CHECKING
 import numpy as np
 
-from sentence_transformers import SentenceTransformer
 import faiss
 
-from bs4 import BeautifulSoup
-import requests
-
-from pdfminer.high_level import extract_text as pdfminer_extract
-from PyPDF2 import PdfReader
+if TYPE_CHECKING:  # pragma: no cover - only for type hints
+    from sentence_transformers import SentenceTransformer
 
 LOGGER = logging.getLogger("fura.knowledge")
 
@@ -53,7 +49,7 @@ class KnowledgeStore:
         self.store_path = os.path.join(self.root, "knowledge_store.jsonl")
         self.index_path = os.path.join(self.root, "knowledge_index.pkl")
         self.model_name = "sentence-transformers/all-MiniLM-L6-v2"
-        self._model: Optional[SentenceTransformer] = None
+        self._model: Optional['SentenceTransformer'] = None
         self._index: Optional[faiss.IndexFlatIP] = None
         self._vectors: Optional[np.ndarray] = None   # shape (N, D)
         self._entries: List[Dict] = []              # aligned with _vectors rows
@@ -109,8 +105,14 @@ class KnowledgeStore:
                 "model": self.model_name,
             }, f)
 
-    def _embedder(self) -> SentenceTransformer:
+    def _embedder(self) -> 'SentenceTransformer':
         if self._model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+            except ImportError as e:
+                raise RuntimeError(
+                    "sentence-transformers package is required for embeddings"
+                ) from e
             self._model = SentenceTransformer(self.model_name)
         return self._model
 
@@ -146,7 +148,11 @@ class KnowledgeStore:
         self._add_vectors(vecs, entries)
         return doc_id, len(chunks)
 
-    def _fetch_url(self, url: str, timeout=15) -> Tuple[str, str]:
+    def _fetch_url(self, url: str, timeout=15) -> Tuple[str, bytes]:
+        try:
+            import requests
+        except ImportError as e:
+            raise RuntimeError("requests package is required to fetch URLs") from e
         headers = {"User-Agent":"Mozilla/5.0 (compatible; FuraBot/1.0; +https://jarvik-ai.tech)"}
         r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
         ctype = (r.headers.get("content-type") or "").lower()
@@ -158,20 +164,33 @@ class KnowledgeStore:
         title = url
         if "pdf" in ctype or url.lower().endswith(".pdf"):
             try:
-                # pdfminer
+                from pdfminer.high_level import extract_text as pdfminer_extract
                 text = pdfminer_extract(io.BytesIO(body))
             except Exception:
-                # PyPDF2 fallback
-                rd = PdfReader(io.BytesIO(body))
-                text = "\n".join([p.extract_text() or "" for p in rd.pages])
+                try:
+                    from PyPDF2 import PdfReader
+                    rd = PdfReader(io.BytesIO(body))
+                    text = "\n".join([p.extract_text() or "" for p in rd.pages])
+                except Exception as e:
+                    raise RuntimeError(
+                        "PDF parsing requires pdfminer.six or PyPDF2"
+                    ) from e
         else:
             html = body.decode("utf-8", errors="ignore")
-            soup = BeautifulSoup(html, "html.parser")
-            title_tag = soup.find("title")
-            if title_tag: title = title_tag.text.strip()
-            # remove scripts/styles
-            for bad in soup(["script","style","noscript"]): bad.decompose()
-            text = (soup.get_text(" ") or "").strip()
+            try:
+                from bs4 import BeautifulSoup
+            except ImportError:
+                title_match = re.search(r"<title>(.*?)</title>", html, re.IGNORECASE | re.DOTALL)
+                if title_match:
+                    title = title_match.group(1).strip()
+                text = re.sub(r"<[^>]+>", " ", html)
+            else:
+                soup = BeautifulSoup(html, "html.parser")
+                title_tag = soup.find("title")
+                if title_tag: title = title_tag.text.strip()
+                for bad in soup(["script","style","noscript"]):
+                    bad.decompose()
+                text = (soup.get_text(" ") or "").strip()
         doc_id = f"doc-{len(self._docs)+1}"
         meta = DocMeta(id=doc_id, title=title or url, source="url", tags=["web"])
         self._save_doc(meta)
@@ -188,10 +207,17 @@ class KnowledgeStore:
         text = ""
         if base.lower().endswith(".pdf"):
             try:
+                from pdfminer.high_level import extract_text as pdfminer_extract
                 text = pdfminer_extract(path)
             except Exception:
-                rd = PdfReader(path)
-                text = "\n".join([p.extract_text() or "" for p in rd.pages])
+                try:
+                    from PyPDF2 import PdfReader
+                    rd = PdfReader(path)
+                    text = "\n".join([p.extract_text() or "" for p in rd.pages])
+                except Exception as e:
+                    raise RuntimeError(
+                        "PDF parsing requires pdfminer.six or PyPDF2"
+                    ) from e
         else:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 text = f.read()

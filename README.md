@@ -83,6 +83,18 @@ Install dependencies and execute:
 pytest -q
 ```
 
+## Optional dependencies
+
+Some features rely on third‑party packages that are not strictly required for
+all deployments:
+
+- `sentence-transformers` – computing text embeddings.
+- `faiss-cpu` – similarity search over embeddings.
+- `requests` and `beautifulsoup4` – fetching and parsing web pages.
+- `pdfminer.six` or `PyPDF2` – extracting text from PDF files.
+
+Install the packages that match the features you plan to use.
+
 ## License
 
 Otec Fura is released under the [MIT License](LICENSE).
