@@ -1,17 +1,23 @@
 # api/get_context.py
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
+from pydantic import BaseModel
 from api.get_memory import load_memory_context, append_to_memory
 from api.search_knowledge import search_knowledge
 from api.embedder import embed_and_query
 
 router = APIRouter()
 
+class GetContextRequest(BaseModel):
+    query: str = ""
+    user: str = "anonymous"
+    remember: bool = False
+
+
 @router.post("/get_context")
-async def get_context(request: Request):
-    body = await request.json()
-    query: str = body.get("query", "")
-    user: str = body.get("user", "anonymous")
-    remember: bool = bool(body.get("remember", False))
+async def get_context(body: GetContextRequest):
+    query = body.query
+    user = body.user
+    remember = body.remember
 
     memory_ctx = load_memory_context(user, query)
     knowledge_ctx = search_knowledge(query)
