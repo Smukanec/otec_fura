@@ -1,4 +1,9 @@
-"""Model metadata hints for Jarvik."""
+"""Model metadata hints for Jarvik.
+
+Run this module to regenerate ``static/models_meta.json``:
+
+``python -m models_meta``
+"""
 
 from __future__ import annotations
 
@@ -21,18 +26,6 @@ MODELS_HINTS: Dict[str, Dict[str, str]] = {
         "difficulty": "medium",
         "type": "code",
     },
-    "gpt4": {
-        "label": "GPT-4",
-        "description": "OpenAI GPT-4 model",
-        "difficulty": "high",
-        "type": "general",
-    },
-    "llama2": {
-        "label": "LLaMA2",
-        "description": "Meta's LLaMA2 model",
-        "difficulty": "medium",
-        "type": "general",
-    },
 }
 
 # Convenient set of allowed model identifiers
@@ -52,3 +45,19 @@ def dump_models_meta(path: str | Path) -> None:
     dest.write_text(
         json.dumps(MODELS_HINTS, indent=2, ensure_ascii=False), encoding="utf-8"
     )
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Dump MODELS_HINTS to a JSON file"
+    )
+    parser.add_argument(
+        "path",
+        nargs="?",
+        default=Path(__file__).parent / "static" / "models_meta.json",
+        help="Destination JSON file",
+    )
+    args = parser.parse_args()
+    dump_models_meta(args.path)

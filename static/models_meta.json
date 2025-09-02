@@ -10,17 +10,5 @@
     "description": "Meta's CodeLlama 7B model",
     "difficulty": "medium",
     "type": "code"
-  },
-  "gpt4": {
-    "label": "GPT-4",
-    "description": "OpenAI GPT-4 model",
-    "difficulty": "high",
-    "type": "general"
-  },
-  "llama2": {
-    "label": "LLaMA2",
-    "description": "Meta's LLaMA2 model",
-    "difficulty": "medium",
-    "type": "general"
   }
 }
