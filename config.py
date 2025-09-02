@@ -1,2 +1,6 @@
+import os
+
 API_PORT = 8090
-SECRET_KEY = "a537047637d1ad5fb90f8980db97975cbacc5b9eef0c4bb778e15e12e32e40ac"
+# Use an environment variable for the secret key. Provide a development default
+# so the application can run without explicit configuration.
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
