@@ -15,6 +15,13 @@ otec_fura/
 └─ memory/
    └─ public.jsonl         ← volitelné (veřejné „věty“ do memory)
 
+## Configuration
+
+The application reads configuration from environment variables. Create a `.env`
+file (see `.env.sample`) or export variables in your shell.
+
+- `SECRET_KEY` – secret key used to sign tokens. A development default is used
+  if this variable is not set, but it should be overridden in production.
 
 ## Endpoints
 
