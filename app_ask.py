@@ -11,6 +11,7 @@ from typing import List, Optional
 
 import httpx
 from fastapi import APIRouter, FastAPI, HTTPException
+from models_meta import ALLOWED_MODELS
 
 # Připojíme existující app z tvého projektu
 from main import app as base_app  # main:app už běží v projektu
@@ -115,10 +116,16 @@ def _extract_text(openai_like: dict) -> str:
         return ""
 
 
+def _validate_model(model: str) -> None:
+    if model not in ALLOWED_MODELS:
+        raise HTTPException(status_code=400, detail=f"Unsupported model: {model}")
+
+
 # ====== /v1/chat ======
 @router.post("/v1/chat")
 async def v1_chat(req: ChatReq):
     model = (req.model or MODEL_DEFAULT).strip()
+    _validate_model(model)
     data = await _call_model_gateway(
         messages=[m.model_dump() for m in req.messages],
         model=model,
@@ -139,6 +146,7 @@ async def ask(req: AskReq):
     Výstup: { "response": "..." }  — kompatibilní se starým UI
     """
     model = (req.model or MODEL_DEFAULT).strip()
+    _validate_model(model)
     msgs: list[dict] = []
     ctx = await _maybe_context(req.message)
     if ctx:
