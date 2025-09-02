@@ -121,6 +121,12 @@ def _validate_model(model: str) -> None:
         raise HTTPException(status_code=400, detail=f"Unsupported model: {model}")
 
 
+# ====== /healthz ======
+@router.get("/healthz")
+async def healthz():
+    return {"status": "ok"}
+
+
 # ====== /v1/chat ======
 @router.post("/v1/chat")
 async def v1_chat(req: ChatReq):
