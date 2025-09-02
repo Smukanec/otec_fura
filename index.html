@@ -1,68 +1,359 @@
-<!DOCTYPE html>
-<html lang="cs">
-<head>
-    <meta charset="utf-8">
-    <title>Otec Fura</title>
+ <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Jarvik UI v2</title>
+  <style>
+    :root{
+      --bg:#0a0a0a; --panel:#0f1b14; --accent:#00ff88; --accent2:#17a66a; --text:#c9f5e3; --border:#0c5b3a; --muted:#7bd8b1;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-monospace,Menlo,Consolas,monospace}
+    header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#0d1410,#0a0a0a);position:sticky;top:0;z-index:5}
+    header img.logo{height:42px;filter:drop-shadow(0 0 6px rgba(0,255,136,.25))}
+    header h1{margin:0;font-size:20px;color:var(--accent)}
+    .wrap{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px}
+    @media(max-width:1100px){.wrap{grid-template-columns:1fr}}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:0 0 0 1px rgba(0,255,136,.05),0 8px 24px rgba(0,0,0,.25)}
+    .controls{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px}
+    @media(max-width:900px){.controls{grid-template-columns:1fr 1fr}}
+    label.small{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
+    input[type="text"],select,textarea{width:100%;background:#111;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 12px;outline:none}
+    textarea{min-height:96px;resize:vertical}
+    .btn{background:#0b3a26;color:var(--accent);border:1px solid var(--accent2);padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:600}
+    .btn.secondary{background:#0e1110;border-color:var(--border);color:var(--muted)}
+    .row{display:flex;gap:8px;align-items:center;margin-top:8px}
+    .pill{display:inline-flex;align-items:center;gap:6px;background:#0c1511;border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:4px 10px;font-size:12px}
+    #chat{height:480px;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:6px}
+    .bubble{border:1px solid var(--border);border-radius:14px;padding:12px;background:#0c1411}
+    .q{border-left:3px solid #2d7c57}.a{border-left:3px solid var(--accent2)}
+    .meta{font-size:11px;color:var(--muted);display:flex;gap:8px;margin-bottom:6px}
+    .role{font-weight:700;color:var(--accent)}
+    pre{white-space:pre-wrap;word-wrap:break-word}
+    details{border:1px solid var(--border);border-radius:12px;padding:8px 10px;background:#0b1210}
+    details summary{cursor:pointer;color:var(--accent)}
+    .progress{height:3px;background:#0e1c16;border-radius:99px;overflow:hidden;margin-top:10px;display:none}
+    .progress .bar{height:100%;width:20%;background:linear-gradient(90deg,rgba(0,255,136,.3),rgba(0,255,136,.8));animation:load 1s infinite linear}
+    @keyframes load{from{transform:translateX(-100%)}to{transform:translateX(500%)}}
+  </style>
 </head>
 <body>
-    <div id="status">Nepřihlášený</div>
-    <form id="loginForm">
-        <input type="text" id="username" placeholder="Uživatelské jméno" required>
-        <input type="password" id="password" placeholder="Heslo" required>
-        <button type="submit">Přihlásit</button>
-    </form>
-    <button id="logoutBtn" style="display:none;">Odhlásit</button>
+  <header>
+    <img src="/static/alternativ.png" alt="Logo" class="logo"/>
+    <h1>Jarvik – Chat UI</h1>
+  </header>
 
-    <script>
-    const statusEl = document.getElementById('status');
-    const loginForm = document.getElementById('loginForm');
-    const logoutBtn = document.getElementById('logoutBtn');
+  <div class="wrap">
+    <!-- LEFT: Chat -->
+    <div class="leftcol">
+      <div class="card">
+        <div class="controls">
+          <div id="tokenBlock">
+            <label class="small">Bearer token</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input id="token" type="text" placeholder="Vlož svůj token…"/>
+              <button class="btn secondary" id="saveTokenBtn">Uložit token</button>
+            </div>
+          </div>
+          <div id="changeTokenBlock" style="display:none">
+            <label class="small">Token uložen</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <button class="btn secondary" id="changeTokenBtn">Změnit token</button>
+            </div>
+          </div>
+          <div>
+            <label class="small">Model</label>
+            <select id="model">
+              <option value="auto" selected>Automaticky (podle tokenu / backendu)</option>
+            </select>
+            <div id="modelHelp" class="hint" style="font-size:12px;color:var(--muted);margin-top:6px">Automatická volba modelu dle tokenu / pravidel backendu.</div>
+          </div>
+          <div>
+            <label class="small">Paměť</label>
+            <select id="memory">
+              <option value="public">Veřejná (čtení+zápis: veřejná)</option>
+              <option value="private">Soukromá (čtení: veřejná+privátní, zápis: privátní)</option>
+            </select>
+          </div>
+        </div>
+        <div class="controls" style="margin-top:12px;grid-template-columns:1fr 1fr 1fr 1fr">
+          <div style="grid-column: span 2">
+            <label class="small">Dotaz</label>
+            <textarea id="message" placeholder="Zadej dotaz… (Enter = nový řádek, Ctrl+Enter = odeslat)"></textarea>
+          </div>
+          <div>
+            <label class="small">Soubor pro /crawl</label>
+            <input id="fileInput" type="file" />
+          </div>
+          <div style="display:flex;gap:8px;align-items:end">
+            <button class="btn" id="sendBtn">Odeslat</button>
+            <button class="btn secondary" id="clearBtn">Vyčistit chat</button>
+          </div>
+        </div>
+        <div class="row">
+          <span class="pill" id="statusPill">Připraveno</span>
+        </div>
+        <div class="progress" id="progress"><div class="bar"></div></div>
+      </div>
 
-    async function apiFetch(url, options = {}) {
-        const token = localStorage.getItem('api_key');
-        options.headers = options.headers || {};
-        if (token) {
-            options.headers['Authorization'] = `Bearer ${token}`;
-        }
-        return fetch(url, options);
+      <div class="card" style="margin-top:16px">
+        <div id="chat" aria-live="polite"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Context / Debug -->
+    <div class="rightcol">
+      <div class="card">
+        <div style="font-size:11px;color:var(--muted)">📚 Kontext (výchozí skrytý)</div>
+        <details>
+          <summary>Zobrazit kontext</summary>
+          <pre id="contextBox">(žádný)</pre>
+        </details>
+      </div>
+      <div class="card">
+        <div style="font-size:11px;color:var(--muted)">🛠️ Debug (výchozí skrytý)</div>
+        <details>
+          <summary>Zobrazit debug</summary>
+          <pre id="debugBox">{}</pre>
+          <button class="btn secondary" id="showFullBtn" style="display:none;margin-top:8px">Zobrazit celé</button>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function runSanityTests(){
+      const required = ["model","modelHelp","memory","chat","message","sendBtn","clearBtn"];
+      const missing = required.filter(id => !document.getElementById(id));
+      const dbg = document.getElementById('debugBox');
+      if (missing.length){
+        const msg = `[SELF-TEST] Chybí elementy: ${missing.join(', ')}`;
+        console.error(msg);
+        if (dbg) dbg.textContent = msg;
+      } else {
+        const ok = '[SELF-TEST] OK – všechny povinné elementy existují.';
+        console.log(ok);
+        if (dbg) dbg.textContent = ok;
+      }
     }
 
-    async function updateStatus() {
-        const resp = await apiFetch('/auth/me');
-        if (resp.ok) {
-            const data = await resp.json();
-            statusEl.textContent = data.approved ? `${data.username} (schválený)` : `${data.username} (čekající)`;
-            loginForm.style.display = 'none';
-            logoutBtn.style.display = 'block';
+    async function loadModels() {
+      const select = document.getElementById("model");
+      if (!select){ console.error('Select #model nebyl nalezen.'); return; }
+      try {
+        const res = await fetch("/static/models_meta.json");
+        const meta = await res.json();
+        const entries = Object.entries(meta || {});
+        if (!entries.length) throw new Error("Prázdná odpověď models_meta.json");
+        entries.sort((a,b)=> (a[1].label||a[0]).localeCompare(b[1].label||b[0]));
+        for (const [id, info] of entries) {
+          const opt = document.createElement("option");
+          opt.value = id;
+          const diff = translateDifficulty(info.difficulty);
+          opt.textContent = `${info.label} (${info.description}) — tíha: ${diff}`;
+          opt.dataset.description = info.description || "";
+          opt.dataset.label = info.label || id;
+          opt.dataset.difficulty = diff;
+          opt.dataset.type = info.type || "general";
+          select.appendChild(opt);
+        }
+      } catch (e) {
+        console.warn("Načtení models_meta.json selhalo:", e);
+        // tichý fallback – UI zůstane s volbou „auto“
+      }
+      updateModelHelp();
+    }
+
+    function translateDifficulty(level){
+      switch(level){
+        case "low": return "nízká";
+        case "medium": return "střední";
+        case "high": return "vysoká";
+        default: return level || "neuvedeno";
+      }
+    }
+
+    function updateModelHelp(){
+      const sel = document.getElementById('model');
+      const help = document.getElementById('modelHelp');
+      if (!sel || !help) return;
+      if (sel.value === 'auto'){
+        help.textContent = 'Automatická volba modelu dle tokenu / pravidel backendu.';
+      } else {
+        const opt = sel.options[sel.selectedIndex];
+        const label = opt?.dataset?.label || sel.value;
+        const desc = opt?.dataset?.description || '';
+        const diff = opt?.dataset?.difficulty ? `, tíha: ${opt.dataset.difficulty}` : '';
+        help.textContent = `${label} — ${desc}${diff}`;
+      }
+    }
+
+    const chat = document.getElementById('chat');
+    const sendBtn = document.getElementById('sendBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const messageEl = document.getElementById('message');
+    const progress = document.getElementById('progress');
+    const statusPill = document.getElementById('statusPill');
+    const tokenBlock = document.getElementById('tokenBlock');
+    const changeTokenBlock = document.getElementById('changeTokenBlock');
+    const tokenInputEl = document.getElementById('token');
+    const showFullBtn = document.getElementById('showFullBtn');
+    const saveTokenBtn = document.getElementById('saveTokenBtn');
+    const changeTokenBtn = document.getElementById('changeTokenBtn');
+
+    function getToken(){
+      return localStorage.getItem('api_key') || '';
+    }
+
+    function updateTokenUI(){
+      const saved = getToken();
+      if (saved){
+        tokenBlock.style.display='none';
+        changeTokenBlock.style.display='block';
+        tokenInputEl.value='';
+      } else {
+        tokenBlock.style.display='block';
+        changeTokenBlock.style.display='none';
+      }
+    }
+
+    function addBubble(role, text){
+      const bubble = document.createElement('div');
+      bubble.className = `bubble ${role==='user'?'q':'a'}`;
+      const time = new Date().toLocaleTimeString();
+      bubble.innerHTML = `<div class="meta"><span class="role">${role==='user'?'❓ Otázka':'✅ Odpověď'}</span><span>🕐 ${time}</span></div><pre></pre>`;
+      bubble.querySelector('pre').textContent = text;
+      chat.appendChild(bubble);
+      chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function sendMessage(){
+      const tokenInput = tokenInputEl.value.trim();
+      const token = tokenInput || getToken();
+      const model = document.getElementById('model').value;
+      const memory = document.getElementById('memory').value;
+      const file = document.getElementById('fileInput').files[0];
+      const msg = messageEl.value.trim();
+      if (!msg && !file) return;
+
+      const headers = {'Accept':'application/json, text/plain;q=0.5, */*;q=0.1'};
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      let fetchInit;
+      let requestPayload = { message: msg, memory_mode: memory };
+      if (model !== 'auto') requestPayload.model = model;
+
+      if (file){
+        const fd = new FormData();
+        fd.append('file', file);
+        const crawlHeaders = {};
+        if (token) crawlHeaders['Authorization'] = `Bearer ${token}`;
+        await fetch('/crawl', { method:'POST', headers: crawlHeaders, body: fd });
+      }
+
+      headers['Content-Type'] = 'application/json';
+      fetchInit = { method:'POST', headers, body: JSON.stringify(requestPayload) };
+
+      addBubble('user', msg || `(soubor: ${file?.name})`);
+      messageEl.value = '';
+      statusPill.textContent = 'Odesílám…';
+      progress.style.display = 'block';
+      sendBtn.disabled = true;
+
+      const endpoint = '/ask';
+      try{
+        const res = await fetch(endpoint, fetchInit);
+        const ct = res.headers.get('content-type') || '';
+        let data; let rawText = '';
+        if (ct.includes('application/json')){
+          try {
+            data = await res.json();
+          } catch(e){
+            rawText = (await res.text()) || '';
+          }
         } else {
-            statusEl.textContent = 'Nepřihlášený';
-            loginForm.style.display = 'block';
-            logoutBtn.style.display = 'none';
+          rawText = (await res.text()) || '';
         }
+
+        let answerText = '';
+        let ctx = null;
+
+        if (!res.ok){
+          const errMsg = (data && (data.detail || data.error)) || rawText.trim() || res.statusText;
+          answerText = `Chyba: [${res.status}] ${errMsg}`;
+        } else if (data){
+          if (data.answer){
+            answerText = data.answer;
+          } else if (Array.isArray(data.memory) || Array.isArray(data.knowledge)){
+            const parts = [];
+            if (Array.isArray(data.memory)) parts.push(data.memory.join('\n'));
+            if (Array.isArray(data.knowledge)) parts.push(data.knowledge.join('\n'));
+            answerText = parts.join('\n') || '[prázdná odpověď]';
+          } else {
+            answerText = data.detail || '[prázdná odpověď]';
+          }
+          ctx = data.context || { memory: data.memory, knowledge: data.knowledge };
+        } else {
+          answerText = rawText.trim() || `[${res.status}] Odpověď bez JSON (Content-Type: ${ct || 'n/a'})`;
+        }
+
+        addBubble('assistant', answerText);
+        document.getElementById('contextBox').textContent = ctx ? JSON.stringify(ctx, null, 2) : '(žádný)';
+        const debugBox = document.getElementById('debugBox');
+        const debugData = {
+          endpoint,
+          request: requestPayload,
+          status: res.status,
+          contentType: ct,
+          json: !!data,
+          bodyPreview: data ? JSON.stringify(data).slice(0,200) : rawText.slice(0,200)
+        };
+        debugBox.textContent = JSON.stringify(debugData, null, 2);
+        if ((data && JSON.stringify(data).length > 200) || (!data && rawText.length > 200)) {
+          showFullBtn.style.display = 'inline-block';
+          showFullBtn.onclick = () => {
+            debugBox.textContent = JSON.stringify({
+              ...debugData,
+              body: data || rawText
+            }, null, 2);
+            showFullBtn.style.display = 'none';
+          };
+        } else {
+          showFullBtn.style.display = 'none';
+          showFullBtn.onclick = null;
+        }
+      }catch(err){
+        addBubble('assistant', `Chyba: ${err?.message || err}`);
+      }finally{
+        progress.style.display = 'none';
+        sendBtn.disabled = false;
+        statusPill.textContent = 'Připraveno';
+      }
     }
 
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('username').value;
-        const password = document.getElementById('password').value;
-        const resp = await fetch('/auth/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        });
-        if (resp.ok) {
-            const data = await resp.json();
-            localStorage.setItem('api_key', data.api_key);
-            await updateStatus();
-        }
+    messageEl.addEventListener('keydown', (e)=>{ if (e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); sendMessage(); }});
+    sendBtn.addEventListener('click', sendMessage);
+    clearBtn.addEventListener('click', ()=>{ chat.innerHTML=''; });
+    document.getElementById('model').addEventListener('change', updateModelHelp);
+    saveTokenBtn.addEventListener('click', ()=>{
+      const val = tokenInputEl.value.trim();
+      if (val){
+        localStorage.setItem('api_key', val);
+        updateTokenUI();
+      }
+    });
+    changeTokenBtn.addEventListener('click', ()=>{
+      tokenInputEl.value = getToken();
+      localStorage.removeItem('api_key');
+      updateTokenUI();
+      tokenInputEl.focus();
     });
 
-    logoutBtn.addEventListener('click', () => {
-        localStorage.removeItem('api_key');
-        updateStatus();
+    document.addEventListener('DOMContentLoaded', ()=>{
+      runSanityTests();
+      updateTokenUI();
+      loadModels();
+      updateModelHelp();
     });
-
-    updateStatus();
-    </script>
+  </script>
 </body>
 </html>
