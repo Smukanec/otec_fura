@@ -127,6 +127,30 @@ async def healthz():
     return {"status": "ok"}
 
 
+# ====== /v1/models ======
+@router.get("/v1/models")
+async def v1_models():
+    """List available models.
+
+    Tries to proxy Jarvik's model list endpoint. If that fails, falls back to
+    the locally allowed models. The returned structure mimics OpenAI's
+    ``/v1/models`` response shape.
+    """
+    url = f"{MODEL_API_BASE}/models"
+    headers = {"Authorization": f"Bearer {MODEL_API_KEY}"}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            r = await c.get(url, headers=headers)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, dict) and "data" in data:
+                    return data
+    except Exception:
+        pass
+    models = [{"id": m, "object": "model"} for m in sorted(ALLOWED_MODELS)]
+    return {"object": "list", "data": models}
+
+
 # ====== /v1/chat ======
 @router.post("/v1/chat")
 async def v1_chat(req: ChatReq):

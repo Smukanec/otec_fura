@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+import httpx
 
 # Ensure project root is on path
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -154,4 +155,18 @@ def test_ask_allows_valid_model(monkeypatch):
     resp = client.post("/ask", json={"message": "hi", "model": "command-r"})
     assert resp.status_code == 200
     assert resp.json()["used_model"] == "command-r"
+
+
+def test_v1_models_lists_allowed_models(monkeypatch):
+    async def fail_get(self, url, headers=None):
+        raise httpx.ConnectError("boom", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", fail_get, raising=False)
+    resp = client.get("/v1/models")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["object"] == "list"
+    expected = sorted(app_ask.ALLOWED_MODELS)
+    assert [m["id"] for m in data["data"]] == expected
+    assert all(m["object"] == "model" for m in data["data"]) 
 
