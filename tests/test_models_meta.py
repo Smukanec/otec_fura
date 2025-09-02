@@ -7,6 +7,8 @@ from models_meta import MODELS_HINTS, ALLOWED_MODELS, dump_models_meta
 def test_allowed_models():
     assert "command-r" in ALLOWED_MODELS
     assert "codellama-7b" in ALLOWED_MODELS
+    assert "gpt4" not in ALLOWED_MODELS
+    assert "llama2" not in ALLOWED_MODELS
 
 
 def test_dump_models_meta(tmp_path: Path):
