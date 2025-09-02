@@ -32,6 +32,15 @@ MODELS_HINTS: Dict[str, Dict[str, str]] = {
         "difficulty": "medium",
         "type": "code",
     },
+    "llama3:8b": {
+        "label": "Llama3 8B",
+        "tip": "Meta's Llama3 model",
+        "description": "Meta's Llama3 8B model",
+        "group": "general",
+        "tier": "standard",
+        "difficulty": "easy",
+        "type": "general",
+    },
 }
 
 # Convenient set of allowed model identifiers
