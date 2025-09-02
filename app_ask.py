@@ -21,7 +21,11 @@ router = APIRouter()
 
 # ====== Konfigurace z ENV (nastavíme v /etc/otec-fura/.env) ======
 MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1").rstrip("/")
-MODEL_API_KEY = os.getenv("MODEL_API_KEY", "mojelokalnikurvitko")
+MODEL_API_KEY = os.getenv("MODEL_API_KEY")
+if not MODEL_API_KEY:
+    raise RuntimeError(
+        "MODEL_API_KEY environment variable is required on startup."
+    )
 MODEL_DEFAULT = os.getenv("MODEL_DEFAULT", "llama3:8b")
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "120"))
 
