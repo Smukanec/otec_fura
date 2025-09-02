@@ -1,4 +1,16 @@
 {
+  "command-r": {
+    "label": "Command R",
+    "description": "Cohere's Command R reasoning model",
+    "difficulty": "medium",
+    "type": "general"
+  },
+  "codellama-7b": {
+    "label": "CodeLlama 7B",
+    "description": "Meta's CodeLlama 7B model",
+    "difficulty": "medium",
+    "type": "code"
+  },
   "gpt4": {
     "label": "GPT-4",
     "description": "OpenAI GPT-4 model",
