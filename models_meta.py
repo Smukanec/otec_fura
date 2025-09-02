@@ -16,13 +16,19 @@ from typing import Dict
 MODELS_HINTS: Dict[str, Dict[str, str]] = {
     "command-r": {
         "label": "Command R",
+        "tip": "Cohere's reasoning model",
         "description": "Cohere's Command R reasoning model",
+        "group": "reasoning",
+        "tier": "premium",
         "difficulty": "medium",
         "type": "general",
     },
     "codellama-7b": {
         "label": "CodeLlama 7B",
+        "tip": "Meta's code model",
         "description": "Meta's CodeLlama 7B model",
+        "group": "code",
+        "tier": "standard",
         "difficulty": "medium",
         "type": "code",
     },
