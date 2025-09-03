@@ -1,28 +1,98 @@
-<!doctype html><meta charset="utf-8"><title>FURA</title>
+<!doctype html>
+<meta charset="utf-8">
+<title>FURA UI</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:900px;margin:32px auto;padding:0 16px}
+  h1{margin:0 0 12px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+  label{font-size:14px;color:#444;min-width:90px}
+  input,select,textarea,button{font:inherit;padding:8px;border:1px solid #ccc;border-radius:6px}
+  textarea{width:100%;min-height:120px}
+  #o{white-space:pre-wrap;border:1px solid #eee;background:#fafafa;border-radius:8px;padding:12px;margin-top:12px}
+  .muted{color:#777;font-size:12px}
+</style>
+
 <h1>FURA UI</h1>
-
-<label>Model: <input id="m" value="llama3:8b"></label><br>
-<label>X-API-Key: <input id="k" value="mojelokalnikurvitko"></label><br><br>
-
-<textarea id="t" rows="5" cols="80" placeholder="Zadej dotaz"></textarea><br>
-<button onclick="ask()">Odeslat</button>
+<div class="row">
+  <label for="model">Model:</label>
+  <select id="model"></select>
+  <button id="reload">↻ načíst modely</button>
+</div>
+<div class="row">
+  <label for="key">X-API-Key:</label>
+  <input id="key" type="password" placeholder="Zadej API klíč">
+  <button id="save">💾 uložit</button>
+  <span class="muted" id="hint"></span>
+</div>
+<textarea id="t" placeholder="Zadej dotaz…"></textarea>
+<div class="row">
+  <button id="send">Odeslat</button>
+</div>
 <pre id="o"></pre>
 
 <script>
-async function ask(){
-  const body = {
-    message: document.getElementById('t').value,
-    model: document.getElementById('m').value
-  };
-  const key  = document.getElementById('k').value;
-  const r = await fetch('/ask', {
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'X-API-Key':key
-    },
-    body:JSON.stringify(body)
-  });
-  document.getElementById('o').textContent = await r.text();
+const ls = window.localStorage;
+const keyEl = document.getElementById('key');
+const modelEl = document.getElementById('model');
+const out = document.getElementById('o');
+const hint = document.getElementById('hint');
+
+function loadKey(){
+  const k = ls.getItem('fura_api_key') || '';
+  keyEl.value = k;
+  hint.textContent = k ? 'Uloženo v tomto prohlížeči (localStorage)' : '';
 }
+function saveKey(){
+  ls.setItem('fura_api_key', keyEl.value.trim());
+  loadKey();
+}
+async function loadModels(){
+  out.textContent = 'Načítám /v1/models…';
+  try{
+    const r = await fetch('/v1/models', {headers: {'X-API-Key': keyEl.value.trim()}});
+    if(!r.ok){ out.textContent = 'Chyba /v1/models: '+(await r.text()); return; }
+    const j = await r.json();
+    const items = j.data || j.models || [];
+    modelEl.innerHTML = '';
+    for(const m of items){
+      const id = m.id || m.name || '';
+      if(!id) continue;
+      const opt = document.createElement('option');
+      opt.value = id; opt.textContent = id;
+      modelEl.appendChild(opt);
+    }
+    // fallback – kdyby nic nepřišlo
+    if(!modelEl.value){
+      for(const id of ["llama3:8b","codellama:7b-instruct","mistral:7b","starcoder:7b","nous-hermes2:latest","command-r:latest","gpt-oss:latest"]){
+        const opt=document.createElement('option'); opt.value=id; opt.textContent=id; modelEl.appendChild(opt);
+      }
+    }
+    out.textContent = 'Modely načteny.';
+  }catch(e){ out.textContent = 'Exception: '+e; }
+}
+async function send(){
+  const body = {
+    model: modelEl.value || "llama3:8b",
+    messages: [{role:"user", content: document.getElementById('t').value}]
+  };
+  out.textContent = 'Odesílám…';
+  const r = await fetch('/v1/chat', {
+    method:'POST',
+    headers: {'Content-Type':'application/json','X-API-Key': keyEl.value.trim()},
+    body: JSON.stringify(body)
+  });
+  const t = await r.text();
+  try{
+    const j = JSON.parse(t);
+    out.textContent = j.answer || JSON.stringify(j,null,2);
+  }catch{ out.textContent = t; }
+}
+
+document.getElementById('save').onclick = saveKey;
+document.getElementById('reload').onclick = loadModels;
+document.getElementById('send').onclick = send;
+
+loadKey();
+loadModels();
 </script>
