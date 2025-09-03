@@ -1,76 +1,77 @@
 <!doctype html>
-<html lang="cs">
-<head>
-  <meta charset="utf-8" />
-  <title>FURA UI</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
-    label { display:inline-block; margin-right:12px; }
-    textarea { width: 100%; max-width: 960px; }
-    pre { white-space: pre-wrap; background:#111; color:#ddd; padding:12px; border-radius:8px; max-width: 960px; }
-    .row { margin: 8px 0; }
-    button { padding: 8px 14px; }
-    input[type="text"] { padding:6px; }
-    select { padding:6px; }
-  </style>
-</head>
-<body>
-  <h1>FURA UI</h1>
+<meta charset="utf-8">
+<title>FURA UI</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 24px auto; }
+  h1 { margin: 0 0 16px; }
+  .row { margin: 8px 0; display:flex; gap:8px; align-items:center; }
+  input[type=text] { width: 320px; }
+  textarea { width: 100%; height: 140px; }
+  button { padding: 8px 14px; }
+  #out { white-space: pre-wrap; background:#f7f7f7; padding:12px; border-radius:8px; }
+  .muted { color:#666; font-size: 12px; }
+</style>
 
-  <div class="row">
-    <label>Model:
-      <select id="model">
-        <option>llama3:8b</option>
-        <option>codellama:7b-instruct</option>
-        <option>mistral:7b</option>
-        <option>starcoder:7b</option>
-        <option>nous-hermes2:latest</option>
-        <option>command-r:latest</option>
-        <option>gpt-oss:latest</option>
-      </select>
-    </label>
-    <label>X-API-Key:
-      <input id="apikey" type="text" size="32" placeholder="(pokud je vyžadován)" />
-    </label>
-  </div>
+<h1>FURA UI</h1>
 
-  <div class="row">
-    <textarea id="msg" rows="6" placeholder="Zadej dotaz..."></textarea>
-  </div>
+<div class="row">
+  <label>Model:</label>
+  <input id="model" type="text" value="llama3:8b">
+  <span class="muted">/v1/chat i /ask používají stejný model gateway.</span>
+</div>
 
-  <div class="row">
-    <button id="send">Odeslat</button>
-  </div>
+<div class="row">
+  <label>X-API-Key:</label>
+  <input id="xkey" type="text" placeholder="(volitelné, jen pokud FURA_API_KEY)">
+</div>
 
-  <pre id="out"></pre>
+<p><b>Zadej dotaz:</b></p>
+<textarea id="msg" placeholder="Ahoj, funguješ?"></textarea>
 
-  <script>
-    const keyEl = document.getElementById('apikey');
-    keyEl.value = localStorage.getItem('fura_api_key') || '';
-    keyEl.addEventListener('change', ()=>localStorage.setItem('fura_api_key', keyEl.value));
+<div class="row">
+  <button onclick="ask()">Odeslat přes /ask</button>
+  <button onclick="chat()">Odeslat přes /v1/chat</button>
+</div>
 
-    document.getElementById('send').addEventListener('click', async () => {
-      const apikey = keyEl.value.trim();
-      const model = document.getElementById('model').value;
-      const msg = document.getElementById('msg').value;
+<h3>Odpověď</h3>
+<pre id="out"></pre>
 
-      const r = await fetch('/v1/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(apikey ? {'X-API-Key': apikey} : {})
-        },
-        body: JSON.stringify({ model, messages: [{ role: 'user', content: msg }] })
-      });
-      const text = await r.text();
-      try {
-        const j = JSON.parse(text);
-        document.getElementById('out').textContent = j.answer ?? JSON.stringify(j, null, 2);
-      } catch(e) {
-        document.getElementById('out').textContent = text;
-      }
-    });
-  </script>
-</body>
-</html>
+<script>
+function headers() {
+  const h = { "Content-Type":"application/json" };
+  const key = document.getElementById('xkey').value.trim();
+  if (key) h['X-API-Key'] = key; // jen když je potřeba
+  return h;
+}
+function setOut(text) { document.getElementById('out').textContent = text; }
+
+async function ask() {
+  setOut('…');
+  const body = {
+    message: document.getElementById('msg').value,
+    model: document.getElementById('model').value
+  };
+  const r = await fetch('/ask', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  setOut(data.response ?? JSON.stringify(data, null, 2));
+}
+
+async function chat() {
+  setOut('…');
+  const body = {
+    model: document.getElementById('model').value,
+    messages: [{role:'user', content: document.getElementById('msg').value}]
+  };
+  const r = await fetch('/v1/chat', {
+    method: 'POST',
+    headers: headers(),
+    body: JSON.stringify(body)
+  });
+  const data = await r.json();
+  setOut(data.answer ?? JSON.stringify(data, null, 2));
+}
+</script>
