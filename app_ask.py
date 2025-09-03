@@ -1,32 +1,28 @@
-#!/usr/bin/env python3
 import os
 from typing import List, Optional
 
 import httpx
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header
-from fastapi.responses import RedirectResponse
-from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.responses import RedirectResponse
+from starlette.staticfiles import StaticFiles
 
-# ===== Konfigurace =====
-APP_NAME = "Otec Fura"
-APP_VERSION = os.getenv("FURA_VERSION", "1.0.0")
+# === Konfigurace ===
+WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
 
 MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1").rstrip("/")
-MODEL_API_KEY  = os.getenv("MODEL_API_KEY", "mojelokalnikurvitko")
-DEFAULT_MODEL  = os.getenv("MODEL_DEFAULT", "llama3:8b")
+MODEL_API_KEY  = os.getenv("MODEL_API_KEY",  "mojelokalnikurvitko")
+DEFAULT_MODEL  = os.getenv("MODEL_DEFAULT",  "llama3:8b")
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "120"))
-# root URL model gateway (pro /healthz)
-GW_ROOT = MODEL_API_BASE[:-3] if MODEL_API_BASE.endswith("/v1") else MODEL_API_BASE
 
-# volitelně ochrana FURY vlastním klíčem (pokud proměnná není nastavena, klíč se NEvyžaduje)
-FURA_API_KEY = os.getenv("FURA_API_KEY", "").strip()
+# Volitelné API‑klíčování (když proměnná není nastavena, endpoints jsou otevřené)
+FURA_API_KEY = os.getenv("FURA_API_KEY")
 
-# ===== FastAPI =====
-app = FastAPI(title=APP_NAME, version=APP_VERSION)
-router = APIRouter()
+def require_api_key(x_api_key: Optional[str] = Header(None)):
+    if FURA_API_KEY and x_api_key != FURA_API_KEY:
+        raise HTTPException(status_code=401, detail="Chybí nebo špatný API klíč")
 
-# ===== Modely požadavků =====
+# === Datové modely ===
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -41,73 +37,86 @@ class AskReq(BaseModel):
     model: Optional[str] = None
     temperature: Optional[float] = 0.5
 
-# ===== Autorizace pro FURU (X-API-Key) – volitelná =====
-def require_api_key(x_api_key: Optional[str] = Header(None, alias="X-API-Key")) -> str:
-    if FURA_API_KEY:  # jen pokud je ochrana zapnutá
-        if not x_api_key or x_api_key != FURA_API_KEY:
-            raise HTTPException(status_code=401, detail="Chybí API klíč")
-    return x_api_key or ""
+# === Aplikace ===
+app = FastAPI(title="Otec Fura", version="1.0.0")
+router = APIRouter()
 
-# ===== Pomocné volání na model gateway =====
-def _model_headers() -> dict:
-    return {
+# Zdraví + kontrola model gateway
+@app.get("/healthz")
+def healthz():
+    try:
+        r = httpx.get(MODEL_API_BASE.replace("/v1", "") + "/healthz", timeout=5)
+        ok = (r.status_code == 200)
+        mg = r.json() if ok else {"ok": False, "status": r.status_code}
+    except Exception as e:
+        ok = False
+        mg = {"ok": False, "error": str(e)}
+    return {"app": "otec-fura", "ok": ok, "model_gateway": mg}
+
+# Pomocná funkce pro volání /v1/chat/completions na gateway
+def call_chat_completions(model: str, messages: List[dict], temperature: float):
+    headers = {
         "Authorization": f"Bearer {MODEL_API_KEY}",
         "Content-Type": "application/json",
     }
-
-def _call_model(messages: List[dict], model: Optional[str], temperature: float) -> str:
-    url = f"{MODEL_API_BASE}/chat/completions"
     payload = {
         "model": model or DEFAULT_MODEL,
         "messages": messages,
         "temperature": temperature,
     }
-    with httpx.Client(timeout=REQUEST_TIMEOUT) as client:
-        r = client.post(url, headers=_model_headers(), json=payload)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=r.status_code, detail=f"Model gateway error: {r.text}")
-        data = r.json()
-    try:
-        return data["choices"][0]["message"]["content"]
-    except Exception:
-        raise HTTPException(status_code=502, detail=f"Unexpected model response: {data!r}")
+    r = httpx.post(
+        f"{MODEL_API_BASE}/chat/completions",
+        json=payload,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT,
+    )
+    if r.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Upstream error: {r.text}")
+    data = r.json()
+    # OpenAI‑like extrakce
+    text = (data.get("choices") or [{}])[0].get("message", {}).get("content")
+    if not text:
+        raise HTTPException(status_code=502, detail="Unexpected upstream payload")
+    return data, text
 
-# ===== Endpoints =====
-@app.get("/healthz")
-def healthz():
-    gw = {"ok": False}
-    try:
-        with httpx.Client(timeout=5.0) as client:
-            resp = client.get(f"{GW_ROOT}/healthz")
-            resp.raise_for_status()
-            gw = resp.json()
-            gw["ok"] = True
-    except Exception as e:
-        gw = {"ok": False, "error": str(e)}
-    return {"app": "otec-fura", "ok": True, "model_gateway": gw}
-
-@router.post("/ask", dependencies=[Depends(require_api_key)])
+# Jednoduché /ask
+@router.post("/ask", dependencies=[Depends(require_api_key)] if FURA_API_KEY else None)
 def ask(req: AskReq):
-    answer = _call_model(
-        messages=[{"role": "user", "content": req.message}],
-        model=req.model,
-        temperature=req.temperature or 0.5,
+    _, text = call_chat_completions(
+        req.model or DEFAULT_MODEL,
+        [{"role": "user", "content": req.message}],
+        req.temperature,
     )
-    return {"response": answer}
+    return {"response": text}
 
-@router.post("/v1/chat", dependencies=[Depends(require_api_key)])
+# OpenAI‑like vstup, vrací navíc "answer" pro pohodlí UI
+@router.post("/v1/chat", dependencies=[Depends(require_api_key)] if FURA_API_KEY else None)
 def v1_chat(req: ChatReq):
-    answer = _call_model(
-        messages=[m.model_dump() for m in req.messages],
-        model=req.model,
-        temperature=req.temperature or 0.5,
+    data, text = call_chat_completions(
+        req.model or DEFAULT_MODEL,
+        [m.model_dump() for m in req.messages],
+        req.temperature,
     )
-    return {"answer": answer, "model": req.model or DEFAULT_MODEL}
+    return {
+        "id": data.get("id", "fura-proxy"),
+        "object": "chat.completion",
+        "created": data.get("created"),
+        "model": req.model or DEFAULT_MODEL,
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": text}}],
+        "answer": text,
+    }
 
-# Swagger je na /docs, UI na /app, root -> /app
 app.include_router(router)
-app.mount("/app", StaticFiles(directory="webui", html=True), name="app")
 
+# === UI mount ===
+if os.path.isdir(WEBUI_DIR):
+    app.mount("/app", StaticFiles(directory=WEBUI_DIR, html=True), name="app")
+
+# Redirecty se správným slash
 @app.get("/", include_in_schema=False)
-def root():
-    return RedirectResponse("/app")
+def _root():
+    return RedirectResponse(url="/app/", status_code=308)
+
+@app.get("/app", include_in_schema=False)
+def _app_noslash():
+    return RedirectResponse(url="/app/", status_code=308)
