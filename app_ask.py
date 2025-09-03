@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from starlette.responses import RedirectResponse
 from starlette.staticfiles import StaticFiles
 
-# Původní jádro FURY (auth, knowledge, get_context atd.)
+# původní jádro FURY (auth, knowledge, get_context, atd.)
 from main import app as core_app
 
 # ===== Konfigurace z env =====
@@ -36,17 +36,15 @@ class AskReq(BaseModel):
     model: Optional[str] = None
     temperature: Optional[float] = 0.5
 
-# ===== AUTH DEPENDENCE =====
+# ===== AUTH =====
 def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
     if not FURA_AUTH_REQUIRED:
         return
     if not FURA_API_KEY or x_api_key != FURA_API_KEY:
         raise HTTPException(status_code=401, detail="Chybí nebo neplatný API klíč")
 
-# ===== APLIKACE =====
+# ===== VLASTNÍ APP s docs =====
 app = FastAPI(title="Otec Fura", docs_url="/docs", redoc_url="/redoc")
-app.mount("/core", core_app)  # aby zůstaly staré routy
-
 router = APIRouter()
 
 # Healthz
@@ -60,7 +58,7 @@ async def healthz():
         gw = {"ok": False}
     return {"app": "otec-fura", "ok": True, "model_gateway": gw}
 
-# /ask – jednoduché rozhraní
+# /ask
 @router.post("/ask", dependencies=[Depends(require_api_key)])
 async def ask(req: AskReq):
     body = {
@@ -74,14 +72,12 @@ async def ask(req: AskReq):
             r = await client.post(f"{MODEL_API_BASE}/chat/completions", json=body, headers=headers)
             r.raise_for_status()
             data = r.json()
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"Model API {e.response.status_code}: {e.response.text}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Model API chyba: {e}")
     msg = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
     return {"response": msg}
 
-# /v1/chat – OpenAI kompatibilní endpoint
+# /v1/chat
 @router.post("/v1/chat", dependencies=[Depends(require_api_key)])
 async def v1_chat(req: ChatReq):
     body = {
@@ -95,20 +91,20 @@ async def v1_chat(req: ChatReq):
             r = await client.post(f"{MODEL_API_BASE}/chat/completions", json=body, headers=headers)
             r.raise_for_status()
             data = r.json()
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"Model API {e.response.status_code}: {e.response.text}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Model API chyba: {e}")
     msg = (data.get("choices") or [{}])[0].get("message", {}).get("content", "")
     return {"answer": msg, "raw": data}
 
-# UI na /app
+# UI mount
 if os.path.isdir(WEBUI_DIR):
     app.mount("/app", StaticFiles(directory=WEBUI_DIR, html=True), name="app")
 
+# redirect root
 @router.get("/")
 async def root_redirect():
     return RedirectResponse("/app/")
 
-# Připojit router
+# Připojit routery
 app.include_router(router)
+app.mount("/core", core_app)
