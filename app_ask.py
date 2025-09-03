@@ -1,63 +1,125 @@
-# app_ask.py
-# Drop-in „vstupní bod“ pro Otec Fura:
-# - načte existující FastAPI aplikaci z main.py
-# - přidá kompatibilní endpoint /ask (stejné schéma jako staré UI)
-# - přidá /v1/chat (OpenAI-like chat) a volá model gateway na Jarviku
-# - nechává všechny původní endpointy (auth, knowledge, crawl...) beze změny
-
 import os
 import urllib.parse
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, FastAPI, HTTPException
-from models_meta import ALLOWED_MODELS
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
+from pydantic import BaseModel
+from starlette.responses import RedirectResponse, HTMLResponse
+from starlette.staticfiles import StaticFiles
 
-# Připojíme existující app z tvého projektu
-from main import app as base_app  # main:app už běží v projektu
+# Původní FURA aplikace (auth/knowledge/api atd.) – přimontujeme ji pod /core
+from main import app as core_app
 
-app: FastAPI = base_app
+# === Konfigurace z ENV ========================================================
+MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1").rstrip("/")
+MODEL_API_KEY  = (os.getenv("MODEL_API_KEY") or "").strip() or None
+MODEL_DEFAULT  = os.getenv("MODEL_DEFAULT", "llama3:8b").strip()
+REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "120"))
+FURA_API_KEY   = (os.getenv("FURA_API_KEY") or "").strip()
+
+# CSV whitelist modelů (volitelné). Když je neprázdný, kontrolujeme modely proti němu.
+MODEL_ALLOWED = [m.strip() for m in (os.getenv("MODEL_ALLOWED") or "").split(",") if m.strip()]
+
+# Zap/vyp RAG kontext pro /ask (default: zapnuto)
+USE_CONTEXT_DEFAULT = (os.getenv("USE_CONTEXT_DEFAULT", "true").lower() in ("1", "true", "yes"))
+
+# Cesta k web UI (statické soubory)
+WEBUI_DIR = os.getenv("FURA_WEBUI_DIR", os.path.join(os.path.dirname(__file__), "webui"))
+
+# === Wrapper FastAPI aplikace (veřejná vrstva) ===============================
+app = FastAPI(title="Otec FURA — wrapper")
 router = APIRouter()
 
-# ====== Konfigurace z ENV (nastavíme v /etc/otec-fura/.env) ======
-MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1").rstrip("/")
-MODEL_API_KEY = os.getenv("MODEL_API_KEY")
-if not MODEL_API_KEY:
-    raise RuntimeError(
-        "MODEL_API_KEY environment variable is required on startup."
-    )
-MODEL_DEFAULT = os.getenv("MODEL_DEFAULT", "llama3:8b")
-REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "120"))
 
-# ====== Datové modely ======
-from pydantic import BaseModel
+# === Autorizační závislost (jen když je FURA_API_KEY nastaven) ===============
+def api_auth(authorization: Optional[str] = Header(None),
+             x_api_key: Optional[str] = Header(None)) -> None:
+    if not FURA_API_KEY:
+        return  # auth vypnuta
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token and x_api_key:
+        token = x_api_key.strip()
+    if token != FURA_API_KEY:
+        raise HTTPException(status_code=401, detail="Chybí API klíč")
 
+
+# === Datové modely ===========================================================
 class ChatMessage(BaseModel):
     role: str
     content: str
+
 
 class ChatReq(BaseModel):
     messages: List[ChatMessage]
     model: Optional[str] = None
     temperature: Optional[float] = 0.5
 
+
 class AskReq(BaseModel):
     message: str
     model: Optional[str] = None
     temperature: Optional[float] = 0.5
+    use_context: Optional[bool] = None  # None => použij USE_CONTEXT_DEFAULT
 
 
-# ====== Pomocné funkce ======
+# === Pomocné funkce ==========================================================
+def _headers_upstream() -> dict:
+    h = {"Content-Type": "application/json"}
+    if MODEL_API_KEY:
+        h["Authorization"] = f"Bearer {MODEL_API_KEY}"
+    return h
+
+
+def _validate_model(name: str) -> str:
+    model = (name or MODEL_DEFAULT).strip()
+    if MODEL_ALLOWED and model not in MODEL_ALLOWED:
+        raise HTTPException(status_code=400, detail=f"Model '{model}' není povolen")
+    return model
+
+
+async def _call_chat_completions(payload: dict) -> dict:
+    url = f"{MODEL_API_BASE}/chat/completions"
+    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as c:
+        r = await c.post(url, headers=_headers_upstream(), json=payload)
+        if r.status_code >= 400:
+            try:
+                detail = r.json()
+            except Exception:
+                detail = {"detail": r.text}
+            raise HTTPException(status_code=r.status_code, detail=detail)
+        return r.json()
+
+
 async def _maybe_context(query: str) -> list[str]:
-    """
-    Zkusí vytáhnout kontext z místního /get_context (pokud existuje).
-    Když to spadne, prostě vrátí [] a jedeme dál.
-    """
+    """Zkusí zavolat původní /get_context na přimountované /core; pokud selže, vrátí []."""
+    if not query:
+        return []
     ctx: list[str] = []
-    get_url = f"http://127.0.0.1:8090/get_context?query={urllib.parse.quote(query)}"
+    # 1) GET varianta
     try:
+        get_url = f"http://127.0.0.1:8090/core/get_context?query={urllib.parse.quote(query)}"
         async with httpx.AsyncClient(timeout=5.0) as c:
             r = await c.get(get_url)
+        if r.status_code == 200:
+            data = r.json()
+            if isinstance(data, dict):
+                for key in ("context", "chunks", "results", "items"):
+                    if key in data and isinstance(data[key], list):
+                        ctx = [str(x) for x in data[key]][:4]
+                        break
+            elif isinstance(data, list):
+                ctx = [str(x) for x in data][:4]
+    except Exception:
+        pass
+    # 2) POST fallback
+    if not ctx:
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as c:
+                r = await c.post("http://127.0.0.1:8090/core/get_context",
+                                 json={"query": query, "top_k": 4})
             if r.status_code == 200:
                 data = r.json()
                 if isinstance(data, dict):
@@ -67,50 +129,9 @@ async def _maybe_context(query: str) -> list[str]:
                             break
                 elif isinstance(data, list):
                     ctx = [str(x) for x in data][:4]
-    except Exception:
-        pass
-    if not ctx:
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as c:
-                r = await c.post(
-                    "http://127.0.0.1:8090/get_context",
-                    json={"query": query, "top_k": 4},
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    if isinstance(data, dict):
-                        for key in ("context", "chunks", "results", "items"):
-                            if key in data and isinstance(data[key], list):
-                                ctx = [str(x) for x in data[key]][:4]
-                                break
-                    elif isinstance(data, list):
-                        ctx = [str(x) for x in data][:4]
         except Exception:
             pass
     return ctx
-
-
-async def _call_model_gateway(messages: list[dict], model: str, temperature: float) -> dict:
-    """
-    Volá Jarvikovu model gateway (OpenAI-compatible /v1/chat/completions).
-    Vrací JSON odpovědi.
-    """
-    url = f"{MODEL_API_BASE}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {MODEL_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": model,
-        "messages": messages,
-        "temperature": temperature,
-    }
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as c:
-        r = await c.post(url, headers=headers, json=payload)
-        if r.status_code >= 400:
-            # přepošleme detail dál jako 502
-            raise HTTPException(status_code=502, detail=r.text)
-        return r.json()
 
 
 def _extract_text(openai_like: dict) -> str:
@@ -120,101 +141,81 @@ def _extract_text(openai_like: dict) -> str:
         return ""
 
 
-def _validate_model(model: str) -> None:
-    if model not in ALLOWED_MODELS:
-        raise HTTPException(status_code=400, detail=f"Unsupported model: {model}")
-
-
-# ====== /healthz ======
-@router.get("/healthz")
+# === Veřejné endpointy (bez auth, pokud FURA_API_KEY prázdné) ================
+@app.get("/healthz")
 async def healthz():
-    return {"status": "ok"}
-
-
-# ====== /v1/models ======
-@router.get("/v1/models")
-async def v1_models():
-    """List available models.
-
-    Tries to proxy Jarvik's model list endpoint. If that fails, falls back to
-    the locally allowed models. The returned structure mimics OpenAI's
-    ``/v1/models`` response shape.
-    """
-    url = f"{MODEL_API_BASE}/models"
-    headers = {"Authorization": f"Bearer {MODEL_API_KEY}"}
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as c:
-            r = await c.get(url, headers=headers)
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, dict) and "data" in data:
-                    return data
-    except Exception:
-        pass
-    models = [{"id": m, "object": "model"} for m in sorted(ALLOWED_MODELS)]
-    return {"object": "list", "data": models}
-
-
-# ====== /v1/chat ======
-@router.post("/v1/chat")
-async def v1_chat(req: ChatReq):
-    model = (req.model or MODEL_DEFAULT).strip()
-    _validate_model(model)
-    data = await _call_model_gateway(
-        messages=[m.model_dump() for m in req.messages],
-        model=model,
-        temperature=req.temperature or 0.5,
-    )
     return {
-        "answer": _extract_text(data),
-        "used_model": model,
-        "raw": data,
+        "name": "otec-fura",
+        "ui": True,
+        "ask": True,
+        "v1chat": True,
+        "model_api_base": MODEL_API_BASE,
+        "require_api_key": bool(FURA_API_KEY),
+        "default_model": MODEL_DEFAULT,
+        "allowed_models": MODEL_ALLOWED or None,
     }
 
 
-# ====== /v1/embeddings ======
-@router.post("/v1/embeddings")
-async def v1_embeddings(payload: dict):
-    """Proxy embeddings requests to the model gateway."""
-    url = f"{MODEL_API_BASE}/embeddings"
-    headers = {
-        "Authorization": f"Bearer {MODEL_API_KEY}",
-        "Content-Type": "application/json",
+@app.get("/auth/config")
+async def auth_config():
+    return {
+        "require_api_key": bool(FURA_API_KEY),
+        "default_model": MODEL_DEFAULT,
+        "allowed_models": MODEL_ALLOWED or None,
     }
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as c:
-        r = await c.post(url, headers=headers, json=payload)
-        if r.status_code >= 400:
-            raise HTTPException(status_code=502, detail=r.text)
-        return r.json()
 
 
-# ====== /ask (kompatibilní s původním UI) ======
+@app.get("/v1/models")
+async def v1_models():
+    return {
+        "object": "list",
+        "data": [{"id": m, "object": "model"} for m in (MODEL_ALLOWED or [MODEL_DEFAULT])],
+    }
+
+
+@router.post("/v1/chat")
+async def v1_chat(req: ChatReq, _=Depends(api_auth)):
+    model = _validate_model(req.model or MODEL_DEFAULT)
+    payload = {
+        "model": model,
+        "messages": [m.model_dump() for m in req.messages],
+        "temperature": req.temperature,
+    }
+    data = await _call_chat_completions(payload)
+    return {"answer": _extract_text(data), "upstream": data, "model": model}
+
+
 @router.post("/ask")
-async def ask(req: AskReq):
-    """
-    Vstup: { "message": "..." } (+ volitelně model, temperature)
-    Výstup: { "response": "..." }  — kompatibilní se starým UI
-    """
-    model = (req.model or MODEL_DEFAULT).strip()
-    _validate_model(model)
-    msgs: list[dict] = []
-    ctx = await _maybe_context(req.message)
-    if ctx:
-        ctx_block = "\n\n".join(ctx)
-        msgs.append({
-            "role": "system",
-            "content": f"Relevantní interní kontext (neodhaluj uživateli doslova):\n{ctx_block}"
-        })
-    msgs.append({"role": "user", "content": req.message})
-
-    data = await _call_model_gateway(
-        messages=msgs,
-        model=model,
-        temperature=req.temperature or 0.5,
-    )
-    text = _extract_text(data)
-    return {"response": text, "used_model": model, "context_used": bool(ctx)}
+async def ask(req: AskReq, _=Depends(api_auth)):
+    model = _validate_model(req.model or MODEL_DEFAULT)
+    use_ctx = USE_CONTEXT_DEFAULT if req.use_context is None else bool(req.use_context)
+    messages: list[dict] = []
+    if use_ctx:
+        ctx = await _maybe_context(req.message)
+        if ctx:
+            messages.append({"role": "system",
+                             "content": "Relevantní kontext (neodhaluj doslova):\n" + "\n\n".join(ctx)})
+    messages.append({"role": "user", "content": req.message})
+    data = await _call_chat_completions({"model": model, "messages": messages,
+                                         "temperature": req.temperature})
+    return {"response": _extract_text(data), "model": model, "context_used": use_ctx}
 
 
-# ====== Registrace routeru do existující app ======
+# Zaregistruj router s /v1/chat a /ask
 app.include_router(router)
+
+# Statické UI na /app (bez auth)
+if os.path.isdir(WEBUI_DIR):
+    app.mount("/app", StaticFiles(directory=WEBUI_DIR, html=True), name="webui")
+else:
+    @app.get("/app")
+    async def app_fallback():
+        return HTMLResponse("<h1>Otec FURA UI</h1><p>UI není nainstalované.</p>")
+
+# Redirect kořen → /app/
+@app.get("/")
+async def _root():
+    return RedirectResponse(url="/app/")
+
+# Původní FURA aplikaci přimontujeme na /core (tam ať si řeší své auth)
+app.mount("/core", core_app)
