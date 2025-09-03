@@ -1,126 +1,28 @@
-<!doctype html>
-<html lang="cs">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Otec FURA</title>
-  <style>
-    :root { --bg:#0e1714; --fg:#e6f2ed; --muted:#9acbb9; --card:#0f1d18; --border:#17362c; --accent:#1d5c47; }
-    html,body{height:100%} body{margin:0;background:var(--bg);color:var(--fg);font:15px system-ui, sans-serif}
-    .wrap{max-width:980px;margin:24px auto;padding:0 16px}
-    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
-    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;margin:12px 0}
-    label{opacity:.9}
-    select,input,textarea,button{font:inherit}
-    select,input,textarea{background:#0b1410;color:var(--fg);border:1px solid var(--border);border-radius:10px;padding:8px}
-    textarea{width:100%;min-height:120px}
-    button{background:var(--accent);color:#d9f1e8;border:none;border-radius:10px;padding:10px 14px;cursor:pointer}
-    .muted{color:var(--muted)}
-    .log{white-space:pre-wrap;background:#0a1512;border:1px dashed var(--border);border-radius:10px;padding:12px;min-height:120px}
-    header{display:flex;justify-content:space-between;align-items:center;margin:16px 0 8px}
-    .pill{border:1px solid var(--border);padding:4px 8px;border-radius:999px;font-size:12px;color:var(--muted)}
-  </style>
-</head>
-<body>
-<div class="wrap">
-  <header>
-    <h1 style="margin:0">Otec FURA</h1>
-    <span id="pill" class="pill">Načítám…</span>
-  </header>
+<!doctype html><meta charset="utf-8"><title>FURA</title>
+<h1>FURA UI</h1>
 
-  <div class="card">
-    <div class="row">
-      <label>Model:</label>
-      <select id="model"></select>
-      <span class="muted" id="modelHint"></span>
-    </div>
-    <div class="row">
-      <label>API klíč (volitelné):</label>
-      <input id="apiKey" type="password" placeholder="FURA_API_KEY"/>
-      <button id="saveKey">Uložit</button>
-      <button id="clearKey">Smazat</button>
-      <small class="muted">Ukládá se jen do tohoto prohlížeče (localStorage).</small>
-    </div>
-  </div>
+<label>Model: <input id="m" value="llama3:8b"></label><br>
+<label>X-API-Key: <input id="k" value="mojelokalnikurvitko"></label><br><br>
 
-  <div class="card">
-    <textarea id="msg" placeholder="Zadej dotaz… (Ctrl/Cmd+Enter odešle)"></textarea>
-    <div class="row">
-      <button id="send">Odeslat</button>
-      <label><input type="checkbox" id="useCtx" checked> použít kontext (RAG)</label>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="log" id="out">(výstup)</div>
-  </div>
-</div>
+<textarea id="t" rows="5" cols="80" placeholder="Zadej dotaz"></textarea><br>
+<button onclick="ask()">Odeslat</button>
+<pre id="o"></pre>
 
 <script>
-const pill = document.getElementById('pill');
-const modelSel = document.getElementById('model');
-const apiKeyEl = document.getElementById('apiKey');
-const out = document.getElementById('out');
-const useCtx = document.getElementById('useCtx');
-
-function setPill(t){ pill.textContent=t; }
-
-function headers() {
-  const h = {'Content-Type':'application/json'};
-  const k = localStorage.getItem('fura_api_key') || '';
-  if (k) h['Authorization'] = 'Bearer ' + k;
-  return h;
-}
-
-async function loadConfig(){
-  try{
-    const r = await fetch('/auth/config'); const j = await r.json();
-    const allowed = (j.allowed_models && j.allowed_models.length) ? j.allowed_models :
-      ['llama3:8b','codellama:7b-instruct','mistral:7b','starcoder:7b','nous-hermes2:latest','command-r:latest','gpt-oss:latest'];
-    modelSel.innerHTML = '';
-    allowed.forEach(m => {
-      const o = document.createElement('option'); o.value = m; o.textContent = m; modelSel.appendChild(o);
-    });
-    modelSel.value = j.default_model || allowed[0];
-    if (j.require_api_key) apiKeyEl.placeholder = 'POVINNÝ: FURA_API_KEY';
-    setPill('Připraveno');
-  }catch(e){
-    setPill('Bez konfigurace'); console.error(e);
-  }
-}
-
 async function ask(){
-  const msg = document.getElementById('msg').value.trim();
-  if(!msg){ document.getElementById('msg').focus(); return; }
-  setPill('Posílám…');
-  out.textContent = '(čekejte…)';
-  try{
-    const body = { message: msg, model: modelSel.value, use_context: useCtx.checked };
-    const r = await fetch('/ask', { method:'POST', headers: headers(), body: JSON.stringify(body) });
-    const t = await r.text();
-    try{
-      const j = JSON.parse(t);
-      out.textContent = j.response || t;
-    }catch{ out.textContent = t; }
-  }catch(e){
-    out.textContent = 'Chyba: ' + (e?.message || e);
-  }finally{
-    setPill('Připraveno');
-  }
+  const body = {
+    message: document.getElementById('t').value,
+    model: document.getElementById('m').value
+  };
+  const key  = document.getElementById('k').value;
+  const r = await fetch('/ask', {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'X-API-Key':key
+    },
+    body:JSON.stringify(body)
+  });
+  document.getElementById('o').textContent = await r.text();
 }
-
-document.getElementById('send').addEventListener('click', ask);
-document.getElementById('msg').addEventListener('keydown', (e)=>{
-  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ask();
-});
-document.getElementById('saveKey').addEventListener('click', ()=>{
-  localStorage.setItem('fura_api_key', apiKeyEl.value || '');
-});
-document.getElementById('clearKey').addEventListener('click', ()=>{
-  localStorage.removeItem('fura_api_key'); apiKeyEl.value = '';
-});
-apiKeyEl.value = localStorage.getItem('fura_api_key') || '';
-loadConfig();
 </script>
-</body>
-</html>
