@@ -1,100 +1,10 @@
-# Otec Fura
+# Otec FURA (konsolidovaná)
 
-A simple FastAPI service providing contextual information from memory and knowledge base.
+Veřejná vrstva (wrapper) + původní FURA app (mount pod `/core`).
 
-## Structure
-
-otec_fura/
-├─ main.py                 ← nahraď
-├─ knowledge_store.py      ← nový
-├─ data/
-│  └─ users.json           ← už máš (api_key, username, approved,…)
-├─ knowledge/              ← sem dej *.md / *.txt (kurátorované články)
-│  ├─ apqp.md
-│  └─ … další
-└─ memory/
-   └─ public.jsonl         ← volitelné (veřejné „věty“ do memory)
-
-## Configuration
-
-The application reads configuration from environment variables. Create a `.env`
-file (see `.env.sample`) or export variables in your shell.
-
-- `SECRET_KEY` – secret key used to sign tokens. A development default is used
-  if this variable is not set, but it should be overridden in production.
-
-## Endpoints
-
-- `POST /get_context` – returns memory, knowledge and embedding context for a query.
-- `POST /crawl` – crawls a URL, stores its embedding and returns the character count.
-
-## Authentication
-
-Register via `POST /auth/register` using a JSON body with `username`, `password`
-and `email`. The account must be approved by an administrator before an API key is
-issued. Once approved, obtain the API key with `POST /auth/token` by providing the
-same `username` and `password`.
-
-## Client communication requirements
-
-All requests (except those under `/auth`) require an API key and use JSON payloads.
-
-1. **Registration** – send `POST /auth/register` with the user's credentials and
-   wait for administrator approval.
-2. **Login** – after approval, call `POST /auth/token` with the login credentials
-   to receive an `api_key`.
-3. **Authenticated calls** – include the API key in the header of every other
-   request:
-
-   ```bash
-   Authorization: Bearer <api_key>
-   ```
-
-   Example: fetching context for a query
-
-   ```bash
-   curl -X POST https://<host>/get_context \
-     -H "Authorization: Bearer YOUR_API_KEY" \
-     -H "Content-Type: application/json" \
-     -d '{"query": "Hello"}'
-   ```
-
-   Without a valid and approved API key the service returns `401` or `403` errors.
-
-## Creating users via script
-
-Administrators can create accounts directly using the provided helper script.
-Run the script and follow the prompts:
-
+## Rychlý start (lokálně)
 ```bash
-./create_user.sh
-```
-
-You will be asked for a username, email and password. Pass `--approve` to mark
-the user as approved immediately; otherwise the account will remain pending and
-you must edit `data/users.json` to set `"approved": true` when ready to activate
-the user.
-
-## Running tests
-
-Install dependencies and execute:
-
-```bash
-pytest -q
-```
-
-## Optional dependencies
-
-Some features rely on third‑party packages that are not strictly required for
-all deployments:
-
-- `sentence-transformers` – computing text embeddings.
-- `faiss-cpu` – similarity search over embeddings.
-- `requests` and `beautifulsoup4` – fetching and parsing web pages.
-- `pdfminer.six` or `PyPDF2` – extracting text from PDF files.
-
-Install the packages that match the features you plan to use.
-
-## License
-
-Otec Fura is released under the [MIT License](LICENSE).
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt  # min: fastapi, uvicorn, httpx
+cp .env.example .env             # vyplň MODEL_API_BASE, MODEL_API_KEY atd.
+uvicorn app_ask:app --host 0.0.0.0 --port 8090
