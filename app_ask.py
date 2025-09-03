@@ -44,7 +44,9 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API
         raise HTTPException(status_code=401, detail="Chybí nebo neplatný API klíč")
 
 # ===== APLIKACE =====
-app = core_app  # zachová původní routery FURY
+app = FastAPI(title="Otec Fura", docs_url="/docs", redoc_url="/redoc")
+app.mount("/core", core_app)  # aby zůstaly staré routy
+
 router = APIRouter()
 
 # Healthz
