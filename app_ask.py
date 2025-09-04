@@ -1,143 +1,112 @@
-# -*- coding: utf-8 -*-
 import os
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
-from pydantic import BaseModel, Field
-from starlette.responses import RedirectResponse, HTMLResponse
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.routing import APIRouter
+from pydantic import BaseModel
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 
-APP_NAME = "otec-fura"
+# ===== config z ENV =====
 MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1")
-MODEL_API_KEY_ENV = os.getenv("MODEL_API_KEY", "")  # volitelné, lze přebít X-API-Key
-
-# -------------------- Pydantic schémata --------------------
-
-class AskReq(BaseModel):
-    message: str = Field(..., description="Uživatelský dotaz")
-    model: str = Field(..., description="Model v model-gateway (např. llama3:8b)")
-    temperature: Optional[float] = Field(0.2, ge=0.0, le=2.0)
-    max_tokens: Optional[int] = Field(None, ge=1)
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-class ChatReq(BaseModel):
-    model: str
-    messages: List[ChatMessage]
-    temperature: Optional[float] = 0.2
-    max_tokens: Optional[int] = None
-
-# -------------------- FastAPI app --------------------
+MODEL_API_KEY = os.getenv("MODEL_API_KEY", "")
+FURA_API_KEY   = os.getenv("FURA_API_KEY", "")  # nepovinné – pokud je, vyžadujeme X-API-Key
 
 app = FastAPI(title="Otec Fura", version="1.0.0")
 router = APIRouter()
 
-# Root -> /app/ (trvale)
-@app.get("/", include_in_schema=False)
-async def root():
-    return RedirectResponse(url="/app/")
 
-# Zdraví aplikace + model-gateway
+# ===== API-key ochrana (volitelné) =====
+def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
+    if not FURA_API_KEY:  # žádná ochrana
+        return True
+    if x_api_key != FURA_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return True
+
+
+# ===== UI / statika =====
+@app.get("/", include_in_schema=False)
+async def root_redirect():
+    # root -> /app/ (aby se servíroval webui/index.html)
+    return RedirectResponse(url="/app/", status_code=308)
+
+# montujeme webui/ jako UI
+app.mount(
+    "/app",
+    StaticFiles(directory=os.path.join(os.path.dirname(__file__), "webui"), html=True),
+    name="app",
+)
+
+
+# ===== model gateway volání =====
+class AskReq(BaseModel):
+    message: str
+    model: str
+
+
 @router.get("/healthz")
 async def healthz():
-    ok = True
-    mgw_info: Dict[str, Any] = {"ok": False}
+    # pokusíme se sáhnout na model gateway /healthz (nevadí, když spadne)
+    info: Dict[str, Any] = {"app": "otec-fura", "ok": True}
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            r = await client.get(f"{MODEL_API_BASE.rstrip('/')}/healthz")
-            if r.status_code == 200:
-                mgw_info = r.json()
-                mgw_info["ok"] = True
-            else:
-                ok = False
+        url = MODEL_API_BASE.rstrip("/").rsplit("/", 1)[0] + "/healthz"
+        headers = {"Authorization": f"Bearer {MODEL_API_KEY}"} if MODEL_API_KEY else {}
+        async with httpx.AsyncClient(timeout=5) as cli:
+            r = await cli.get(url, headers=headers)
+            r.raise_for_status()
+            info["model_gateway"] = r.json()
     except Exception:
-        ok = False
-    return {"app": APP_NAME, "ok": ok, "model_gateway": mgw_info}
+        info["model_gateway"] = {"ok": False}
+    return JSONResponse(info)
 
-# --- pomocná funkce na získání API klíče z hlavičky či env ---
-async def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")) -> str:
-    # povolím prázdné (bezpečnost si řešíš Caddy/místní síť)
-    return x_api_key or MODEL_API_KEY_ENV or ""
 
-# Jednoduché /ask
-@router.post("/ask")
-async def ask(req: AskReq, api_key: str = Depends(require_api_key)):
+@router.post("/ask", dependencies=[Depends(require_api_key)])
+async def ask(req: AskReq):
+    """Jednoduché volání – pošle prompt do modelu a vrátí text."""
     payload = {
         "model": req.model,
         "messages": [{"role": "user", "content": req.message}],
-        "temperature": req.temperature,
     }
-    if req.max_tokens:
-        payload["max_tokens"] = req.max_tokens
-
     headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    if MODEL_API_KEY:
+        headers["Authorization"] = f"Bearer {MODEL_API_KEY}"
 
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(
-                f"{MODEL_API_BASE.rstrip('/')}/chat/completions",
-                json=payload,
-                headers=headers,
-            )
-        if r.status_code != 200:
-            raise HTTPException(status_code=r.status_code, detail=r.text)
+    async with httpx.AsyncClient(timeout=60) as cli:
+        r = await cli.post(f"{MODEL_API_BASE.rstrip('/')}/chat/completions", json=payload, headers=headers)
+        r.raise_for_status()
         data = r.json()
-        # kompatibilita s OpenAI-like shape
-        content = (
-            data.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        ) or data.get("answer") or ""
-        return {"response": content}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-# OpenAI-like /v1/chat
-@router.post("/v1/chat")
-async def v1_chat(req: ChatReq, api_key: str = Depends(require_api_key)):
-    payload = req.dict(exclude_none=True)
+    # tolerantní extrakce textu
+    text = (
+        (data.get("choices") or [{}])[0].get("message", {}).get("content")
+        or data.get("answer")
+        or data.get("detail")
+        or ""
+    )
+    return {"response": text, "raw": data}
+
+
+# OpenAI-like JSON proxy: POST /v1/chat  ->  .../chat/completions
+@router.post("/v1/chat", dependencies=[Depends(require_api_key)])
+async def v1_chat(body: Dict[str, Any]):
     headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            r = await client.post(
-                f"{MODEL_API_BASE.rstrip('/')}/chat/completions",
-                json=payload,
-                headers=headers,
-            )
-        if r.status_code != 200:
-            raise HTTPException(status_code=r.status_code, detail=r.text)
+    if MODEL_API_KEY:
+        headers["Authorization"] = f"Bearer {MODEL_API_KEY}"
+    async with httpx.AsyncClient(timeout=120) as cli:
+        r = await cli.post(f"{MODEL_API_BASE.rstrip('/')}/chat/completions", json=body, headers=headers)
+        r.raise_for_status()
         data = r.json()
-        content = (
-            data.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        ) or data.get("answer") or ""
-        # sjednotím výstup
-        return {"answer": content, "raw": data}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
+    # přidejme i pohodlné pole "answer"
+    answer = (
+        (data.get("choices") or [{}])[0].get("message", {}).get("content")
+        or data.get("answer")
+        or data.get("detail")
+        or ""
+    )
+    return {"answer": answer, "raw": data}
+
 
 app.include_router(router)
-
-# -------------------- Statické UI --------------------
-
-# /app/ -> jednoduché UI z webui/
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "webui")
-if os.path.isdir(STATIC_DIR):
-    app.mount("/app", StaticFiles(directory=STATIC_DIR, html=True), name="app")
-else:
-    @app.get("/app", include_in_schema=False)
-    async def app_placeholder():
-        return HTMLResponse("<h1>UI nenalezeno</h1><p>Chybí adresář webui/.</p>")
