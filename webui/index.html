@@ -1,68 +1,28 @@
 <!doctype html>
-<html lang="cs">
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>FURA – UI</title>
-<style>
-  :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
-  body { margin: 2rem auto; max-width: 880px; padding: 0 1rem; }
-  h1 { margin: 0 0 1rem; }
-  .card { border: 1px solid #ddd; border-radius: 12px; padding: 1rem; margin: 1rem 0; }
-  .row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center; }
-  textarea { width: 100%; min-height: 120px; }
-  input, select, button, textarea { font: inherit; }
-  button { padding: .6rem 1rem; border-radius: 10px; border: 1px solid #ccc; cursor: pointer; }
-  pre { white-space: pre-wrap; word-wrap: break-word; border: 1px solid #eee; border-radius: 10px; padding: .75rem; background: #fafafa; }
-  .muted { color:#666; font-size: .9rem; }
-</style>
-<body>
-  <h1>FURA</h1>
+<meta charset="utf-8">
+<title>FURA UI</title>
+<h1>FURA UI</h1>
 
-  <div class="card">
-    <div class="row">
-      <label>
-        Model<br/>
-        <input id="model" value="llama3:8b" />
-      </label>
-      <button id="send">Odeslat</button>
-    </div>
+<label>Model: <input id="m" value="llama3:8b"></label><br>
+<label>X-API-Key: <input id="k" placeholder="(nepovinné)"></label><br>
 
-    <label>
-      Dotaz<br/>
-      <textarea id="msg" placeholder="Zadej dotaz…"></textarea>
-    </label>
+<textarea id="t" rows="6" cols="80" placeholder="Zadej dotaz..."></textarea><br>
+<button onclick="ask()">Odeslat</button>
 
-    <p class="muted">Tip: backend čeká <code>/ask</code> (JSON: <code>{message, model, temperature?}</code>). Pokud je nasazen <code>FURA_API_KEY</code>, přidej hlavičku <code>X-API-Key</code>.</p>
-  </div>
+<pre id="o" style="white-space:pre-wrap;background:#f5f5f5;padding:1em;margin-top:1em;"></pre>
 
-  <div class="card">
-    <strong>Odpověď:</strong>
-    <pre id="out">—</pre>
-  </div>
+<script>
+async function ask() {
+  const body = {
+    message: document.getElementById('t').value,
+    model: document.getElementById('m').value
+  };
+  const headers = {'Content-Type': 'application/json'};
+  const k = document.getElementById('k').value.trim();
+  if (k) headers['X-API-Key'] = k;
 
-  <script>
-    async function callAsk() {
-      const model = document.getElementById('model').value.trim() || 'llama3:8b';
-      const message = document.getElementById('msg').value.trim();
-      const body = { model, message };
-
-      const headers = { 'Content-Type': 'application/json' };
-      // pokud máš FURA_API_KEY a chceš testovat v browseru, můžeš doplnit:
-      // headers['X-API-Key'] = '...';
-
-      const res = await fetch('/ask', { method: 'POST', headers, body: JSON.stringify(body) });
-      const text = await res.text();
-      try {
-        const data = JSON.parse(text);
-        document.getElementById('out').textContent = data.response ?? text;
-      } catch {
-        document.getElementById('out').textContent = text;
-      }
-    }
-    document.getElementById('send').addEventListener('click', callAsk);
-    document.getElementById('msg').addEventListener('keydown', e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') callAsk();
-    });
-  </script>
-</body>
-</html>
+  const r = await fetch('/ask', {method:'POST', headers, body: JSON.stringify(body)});
+  const data = await r.json().catch(() => ({}));
+  document.getElementById('o').textContent = data.response || JSON.stringify(data, null, 2);
+}
+</script>
