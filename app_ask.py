@@ -1,125 +1,132 @@
+# -*- coding: utf-8 -*-
 import os
-from typing import List, Optional
+import json
+import asyncio
+from typing import List, Optional, Dict, Any
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
-from starlette.responses import HTMLResponse, PlainTextResponse
-from starlette.staticfiles import StaticFiles
+from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 
-# 1) Vezmeme jádro aplikace (tvoje původní API a RAG)
-from main import app as core_app
+# ==== Konfigurace z ENV ====
+MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1")
+MODEL_API_KEY  = os.getenv("MODEL_API_KEY", "mojelokalnikurvitko")  # klíč do model-gateway
+FURA_API_KEY   = os.getenv("FURA_API_KEY")  # pokud nastavíš, bude se vyžadovat X-API-Key
 
-app = core_app
+# ==== FastAPI bez /docs a /redoc ====
+app = FastAPI(
+    title="otec-fura",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url="/openapi.json",
+)
+
 router = APIRouter()
 
-# 2) Konfigurace model gateway (Jarvik01)
-MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1").rstrip("/")
-MODEL_API_KEY  = os.getenv("MODEL_API_KEY",  "mojelokalnikurvitko")
-MODEL_DEFAULT  = os.getenv("MODEL_DEFAULT",  "llama3:8b")
-REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "120"))
-
-# Volitelná ochrana API klíčem pro FURU; pokud není nastaveno, nevyžaduje se
-FURA_API_KEY = os.getenv("FURA_API_KEY", "").strip()
-
+# ==== UI ====
 WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
+# /app/ servíruje statické soubory + index.html
+app.mount("/app", StaticFiles(directory=WEBUI_DIR, html=True), name="app")
 
+# / -> 308 na /app/
+@router.get("/", include_in_schema=False)
+async def root_redirect():
+    return RedirectResponse(url="/app/", status_code=308)
 
-def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")) -> bool:
-    """Pokud je nastaven FURA_API_KEY, endpointy /ask a /v1/chat vyžadují shodu v hlavičce X-API-Key."""
-    if FURA_API_KEY and x_api_key != FURA_API_KEY:
-        raise HTTPException(status_code=401, detail="Chybí API klíč")
-    return True
-
-
-# 3) Odstraníme defaultní "/" route(y) z původního appu (ta tě přesměrovávala na /docs)
-def _remove_routes(paths_to_remove: set[str]) -> None:
-    kept = []
-    for r in app.router.routes:
-        path = getattr(r, "path", None) or getattr(r, "path_format", None)
-        if path in paths_to_remove:
-            continue
-        kept.append(r)
-    app.router.routes = kept
-
-_remove_routes({"/"})  # zruš starý root (necháváme /docs i /redoc být)
-
-
-# 4) UI – statika na /app (zůstává) + UI přímo na root "/"
-if os.path.isdir(WEBUI_DIR):
-    app.mount("/app", StaticFiles(directory=WEBUI_DIR, html=True), name="webui")
-
-
-@app.get("/", include_in_schema=False)
-async def root_index():
-    """Holá adresa -> přímo načte webui/index.html (bez přesměrování na /app ani /docs)."""
+# (volitelně) rychlý náhled indexu na /app/index.html (už řeší StaticFiles)
+@router.get("/index.html", include_in_schema=False)
+async def index_direct():
     index_path = os.path.join(WEBUI_DIR, "index.html")
-    if os.path.isfile(index_path):
-        with open(index_path, "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
-    return PlainTextResponse("UI není nahrané (chybí webui/index.html).", status_code=200)
+    return FileResponse(index_path, media_type="text/html")
 
-
-# 5) Health
-@app.get("/healthz", include_in_schema=False)
+# ==== Zdraví ====
+@router.get("/healthz")
 async def healthz():
-    gw = {}
-    ok = True
+    # ping na model gateway healthz – best-effort
+    gw_ok = False
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(MODEL_API_BASE.replace("/v1", "") + "/healthz")
-            gw = r.json()
-    except Exception:
-        ok = False
-    return {"app": "otec-fura", "ok": ok, "model_gateway": {**gw, "ok": gw.get("ollama_ok", False)}}
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(MODEL_API_BASE.rsplit("/", 1)[0] + "/healthz")
+            gw_ok = (r.status_code == 200)
+            meta = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"raw": r.text}
+    except Exception as e:
+        meta = {"error": str(e)}
 
-
-# 6) Model rozhraní
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-
-class ChatReq(BaseModel):
-    messages: List[ChatMessage]
-    model: Optional[str] = None
-    temperature: Optional[float] = None
-
-
-class AskReq(BaseModel):
-    message: str
-    model: Optional[str] = None
-    temperature: Optional[float] = None
-
-
-@router.post("/v1/chat")
-async def v1_chat(req: ChatReq, _: bool = Depends(require_api_key)):
-    payload = {
-        "model": req.model or MODEL_DEFAULT,
-        "messages": [m.model_dump() for m in req.messages],
+    return {
+        "app": "otec-fura",
+        "ok": True,
+        "model_gateway": {"ok": gw_ok, **meta},
     }
-    if req.temperature is not None:
-        payload["temperature"] = req.temperature
 
-    headers = {"Authorization": f"Bearer {MODEL_API_KEY}"}
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-        r = await client.post(f"{MODEL_API_BASE}/chat/completions", json=payload, headers=headers)
+# ==== Ověření X-API-Key (pokud FURA_API_KEY existuje) ====
+def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
+    if FURA_API_KEY and x_api_key != FURA_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
 
-    if r.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Model gateway error: {r.text}")
+# ==== Jednoduché /ask ====
+@router.post("/ask", dependencies=[Depends(require_api_key)])
+async def ask(payload: Dict[str, Any]):
+    """
+    Vstup: {"message": "...", "model": "llama3:8b", "temperature": 0.7}
+    """
+    message = (payload or {}).get("message") or ""
+    model   = (payload or {}).get("model")   or "llama3:8b"
+    temperature = (payload or {}).get("temperature", 0.7)
+
+    if not message.strip():
+        raise HTTPException(400, "Missing 'message'")
+
+    body = {
+        "model": model,
+        "messages": [{"role": "user", "content": message}],
+        "temperature": temperature,
+    }
+
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {MODEL_API_KEY}"}
+    url = f"{MODEL_API_BASE}/chat/completions" if not MODEL_API_BASE.endswith("/chat/completions") else MODEL_API_BASE
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        r = await client.post(url, headers=headers, json=body)
+    if r.status_code != 200:
+        raise HTTPException(r.status_code, r.text)
 
     data = r.json()
-    msg = (((data.get("choices") or [{}])[0]).get("message") or {}).get("content")
-    return {"answer": msg, "raw": data}
+    # OpenAI-like odpověď
+    text = (
+        ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or data.get("answer")
+        or data.get("detail")
+        or ""
+    )
+    return {"response": text}
 
+# ==== OpenAI-like /v1/chat ====
+@router.post("/v1/chat", dependencies=[Depends(require_api_key)])
+async def v1_chat(body: Dict[str, Any]):
+    """
+    Pro kompatibilitu: {"model": "...", "messages": [...]}
+    Vrací: {"answer": "...", "raw": <původní odpověď gateway>}
+    """
+    if not body or not body.get("messages"):
+        raise HTTPException(400, "Missing 'messages'")
 
-@router.post("/ask")
-async def ask(req: AskReq, _: bool = Depends(require_api_key)):
-    chat = ChatReq(messages=[ChatMessage(role="user", content=req.message)],
-                   model=req.model, temperature=req.temperature)
-    res = await v1_chat(chat)  # type: ignore
-    return {"response": res["answer"]}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {MODEL_API_KEY}"}
+    url = f"{MODEL_API_BASE}/chat/completions" if not MODEL_API_BASE.endswith("/chat/completions") else MODEL_API_BASE
 
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        r = await client.post(url, headers=headers, json=body)
+    if r.status_code != 200:
+        raise HTTPException(r.status_code, r.text)
 
-# 7) Zaregistruj router (přidá /ask a /v1/chat)
+    data = r.json()
+    text = (
+        ((data.get("choices") or [{}])[0].get("message") or {}).get("content")
+        or data.get("answer")
+        or data.get("detail")
+        or ""
+    )
+    return {"answer": text, "raw": data}
+
+# připojit router
 app.include_router(router)
