@@ -1,66 +1,45 @@
 <!doctype html>
-<html lang="cs">
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>FURA</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 880px }
-    textarea, input, button { font: inherit }
-    textarea { width: 100%; min-height: 120px }
-    .row { display: grid; grid-template-columns: 1fr auto; gap: .5rem; align-items: center }
-    .out { white-space: pre-wrap; background: #0b1020; color: #e7ecff; padding: 1rem; border-radius: .5rem; min-height: 4rem }
-    .muted { color: #5b6377; font-size: .9rem }
-    .ok { color: #1b8a2f }
-    .bad { color: #b21a1a }
-  </style>
-  <body>
-    <h1>Otec Fura</h1>
+<meta charset="utf-8">
+<title>FURA</title>
+<style>
+  body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 880px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { margin: 0 0 0.5rem 0; }
+  .row { margin: 0.5rem 0; }
+  textarea { width: 100%; }
+  pre { background: #f6f8fa; padding: 1rem; border-radius: 6px; white-space: pre-wrap; }
+  input, select, button { padding: .4rem .6rem; }
+</style>
 
-    <div class="row" style="margin:.5rem 0 1rem">
-      <label>Model:</label>
-      <input id="model" value="llama3:8b" />
-    </div>
+<h1>Otec Fura</h1>
+<p>Rychlé UI pro dotazování přes <code>/ask</code> a <code>/v1/chat</code>.</p>
 
-    <textarea id="msg" placeholder="Sem napiš dotaz…"></textarea>
-    <div style="margin-top:.5rem">
-      <button onclick="sendAsk()">Odeslat</button>
-      <span class="muted">Pošle <code>POST /ask</code> na tento backend.</span>
-    </div>
+<div class="row">
+  <label>Model:</label>
+  <input id="model" value="llama3:8b" />
+</div>
 
-    <h3>Odpověď</h3>
-    <pre id="out" class="out"></pre>
+<div class="row">
+  <label>Dotaz:</label><br/>
+  <textarea id="message" rows="5" placeholder="Zadej dotaz…"></textarea>
+</div>
 
-    <h3>Zdraví</h3>
-    <code id="hz" class="muted">načítám…</code>
+<div class="row">
+  <button onclick="callAsk()">Odeslat (/ask)</button>
+  <button onclick="callChat()">Odeslat (/v1/chat)</button>
+</div>
 
-    <script>
-      async function sendAsk() {
-        const body = {
-          message: document.getElementById('msg').value,
-          model: document.getElementById('model').value
-        };
-        const r = await fetch('/ask', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(body)
-        });
-        const data = await r.json().catch(()=>({}));
-        const text = data.response ?? JSON.stringify(data, null, 2);
-        document.getElementById('out').textContent = text;
-      }
+<h3>Odpověď</h3>
+<pre id="out">(zatím nic)</pre>
 
-      (async function ping(){
-        try {
-          const r = await fetch('/healthz');
-          const j = await r.json();
-          const ok = j?.model_gateway?.ok ?? j?.model_gateway?.ollama_ok ?? j?.ok;
-          document.getElementById('hz').textContent = ok ? 'OK' : 'NOT OK';
-          document.getElementById('hz').className = ok ? 'ok' : 'bad';
-        } catch(e) {
-          document.getElementById('hz').textContent = 'ERR';
-          document.getElementById('hz').className = 'bad';
-        }
-      })();
-    </script>
-  </body>
-</html>
+<script>
+async function callAsk(){
+  const body = { message: document.getElementById('message').value, model: document.getElementById('model').value };
+  const r = await fetch('/ask', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  document.getElementById('out').textContent = await r.text();
+}
+async function callChat(){
+  const body = { model: document.getElementById('model').value, messages: [{role:'user', content: document.getElementById('message').value}] };
+  const r = await fetch('/v1/chat', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  document.getElementById('out').textContent = await r.text();
+}
+</script>
