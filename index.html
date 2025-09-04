@@ -21,6 +21,8 @@
     textarea{min-height:96px;resize:vertical}
     .btn{background:#0b3a26;color:var(--accent);border:1px solid var(--accent2);padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:600}
     .btn.secondary{background:#0e1110;border-color:var(--border);color:var(--muted)}
+    .modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:10}
+    .modal{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 0 0 1px rgba(0,255,136,.05),0 8px 24px rgba(0,0,0,.25);width:320px;display:flex;flex-direction:column;gap:12px}
     .row{display:flex;gap:8px;align-items:center;margin-top:8px}
     .pill{display:inline-flex;align-items:center;gap:6px;background:#0c1511;border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:4px 10px;font-size:12px}
     #chat{height:480px;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:6px}
@@ -40,29 +42,25 @@
   <header>
     <img src="/static/alternativ.png" alt="Logo" class="logo"/>
     <h1>Jarvik – Chat UI</h1>
+    <button id="logoutBtn" class="btn secondary" style="margin-left:auto;display:none">Odhlásit</button>
   </header>
+
+  <div id="tokenModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <label class="small">Vlož svůj token</label>
+      <input id="tokenModalInput" type="text" placeholder="Vlož svůj token…"/>
+      <button class="btn" id="saveTokenModalBtn">Uložit token</button>
+    </div>
+  </div>
 
   <div class="wrap">
     <!-- LEFT: Chat -->
     <div class="leftcol">
       <div class="card">
         <div class="controls">
-          <div id="tokenBlock">
-            <label class="small">Bearer token</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="token" type="text" placeholder="Vlož svůj token…"/>
-              <button class="btn secondary" id="saveTokenBtn">Uložit token</button>
-            </div>
-          </div>
-          <div id="changeTokenBlock" style="display:none">
-            <label class="small">Token uložen</label>
-            <div style="display:flex;gap:8px;align-items:center">
-              <button class="btn secondary" id="changeTokenBtn">Změnit token</button>
-            </div>
-          </div>
           <div>
-            <label class="small">Model</label>
-            <select id="model">
+            <label class="small"><input type="checkbox" id="autoModel" checked style="margin-right:6px"/>Automatický výběr modelu</label>
+            <select id="model" disabled>
               <option value="auto" selected>Automaticky (podle tokenu / backendu)</option>
             </select>
             <div id="modelHelp" class="hint" style="font-size:12px;color:var(--muted);margin-top:6px">Automatická volba modelu dle tokenu / pravidel backendu.</div>
@@ -199,173 +197,201 @@
       }
     }
 
-    const chat = document.getElementById('chat');
-    const sendBtn = document.getElementById('sendBtn');
-    const clearBtn = document.getElementById('clearBtn');
-    const messageEl = document.getElementById('message');
-    const progress = document.getElementById('progress');
-    const statusPill = document.getElementById('statusPill');
-    const tokenBlock = document.getElementById('tokenBlock');
-    const changeTokenBlock = document.getElementById('changeTokenBlock');
-    const tokenInputEl = document.getElementById('token');
-    const showFullBtn = document.getElementById('showFullBtn');
-    const saveTokenBtn = document.getElementById('saveTokenBtn');
-    const changeTokenBtn = document.getElementById('changeTokenBtn');
+                const chat = document.getElementById('chat');
+      const sendBtn = document.getElementById('sendBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const messageEl = document.getElementById('message');
+      const progress = document.getElementById('progress');
+      const statusPill = document.getElementById('statusPill');
+      const tokenModal = document.getElementById('tokenModal');
+      const tokenInputEl = document.getElementById('tokenModalInput');
+      const showFullBtn = document.getElementById('showFullBtn');
+      const saveTokenModalBtn = document.getElementById('saveTokenModalBtn');
+      const logoutBtn = document.getElementById('logoutBtn');
+      const autoModelChk = document.getElementById('autoModel');
 
-    function getToken(){
-      return localStorage.getItem('api_key') || '';
-    }
-
-    function updateTokenUI(){
-      const saved = getToken();
-      if (saved){
-        tokenBlock.style.display='none';
-        changeTokenBlock.style.display='block';
-        tokenInputEl.value='';
-      } else {
-        tokenBlock.style.display='block';
-        changeTokenBlock.style.display='none';
-      }
-    }
-
-    function addBubble(role, text){
-      const bubble = document.createElement('div');
-      bubble.className = `bubble ${role==='user'?'q':'a'}`;
-      const time = new Date().toLocaleTimeString();
-      bubble.innerHTML = `<div class="meta"><span class="role">${role==='user'?'❓ Otázka':'✅ Odpověď'}</span><span>🕐 ${time}</span></div><pre></pre>`;
-      bubble.querySelector('pre').textContent = text;
-      chat.appendChild(bubble);
-      chat.scrollTop = chat.scrollHeight;
-    }
-
-    async function sendMessage(){
-      const tokenInput = tokenInputEl.value.trim();
-      const token = tokenInput || getToken();
-      const model = document.getElementById('model').value;
-      const memory = document.getElementById('memory').value;
-      const file = document.getElementById('fileInput').files[0];
-      const msg = messageEl.value.trim();
-      if (!msg && !file) return;
-
-      const headers = {'Accept':'application/json, text/plain;q=0.5, */*;q=0.1'};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      let fetchInit;
-      let requestPayload = { message: msg, memory_mode: memory };
-      if (model !== 'auto') requestPayload.model = model;
-
-      if (file){
-        const fd = new FormData();
-        fd.append('file', file);
-        const crawlHeaders = {};
-        if (token) crawlHeaders['Authorization'] = `Bearer ${token}`;
-        await fetch('/crawl', { method:'POST', headers: crawlHeaders, body: fd });
+      function getToken(){
+        return localStorage.getItem('api_key') || '';
       }
 
-      headers['Content-Type'] = 'application/json';
-      fetchInit = { method:'POST', headers, body: JSON.stringify(requestPayload) };
+      function updateTokenUI(){
+        const saved = getToken();
+        if (saved){
+          tokenModal.style.display='none';
+          logoutBtn.style.display='inline-block';
+          tokenInputEl.value='';
+        } else {
+          tokenModal.style.display='flex';
+          logoutBtn.style.display='none';
+        }
+      }
 
-      addBubble('user', msg || `(soubor: ${file?.name})`);
-      messageEl.value = '';
-      statusPill.textContent = 'Odesílám…';
-      progress.style.display = 'block';
-      sendBtn.disabled = true;
+      function saveHistory(role, text, time){
+        const maxAge = 7*24*60*60*1000;
+        const now = Date.now();
+        let hist = [];
+        try{ hist = JSON.parse(localStorage.getItem('chat_history')||'[]'); }catch{}
+        hist.push({role,text,time});
+        hist = hist.filter(item => now - item.time <= maxAge);
+        localStorage.setItem('chat_history', JSON.stringify(hist));
+      }
 
-      const endpoint = '/ask';
-      try{
-        const res = await fetch(endpoint, fetchInit);
-        const ct = res.headers.get('content-type') || '';
-        let data; let rawText = '';
-        if (ct.includes('application/json')){
-          try {
-            data = await res.json();
-          } catch(e){
+      function loadHistory(){
+        const maxAge = 7*24*60*60*1000;
+        const now = Date.now();
+        let hist = [];
+        try{ hist = JSON.parse(localStorage.getItem('chat_history')||'[]'); }catch{}
+        hist = hist.filter(item => now - item.time <= maxAge);
+        localStorage.setItem('chat_history', JSON.stringify(hist));
+        hist.forEach(item => addBubble(item.role, item.text, false, item.time));
+      }
+
+      function addBubble(role, text, save=true, timestamp=Date.now()){
+        const bubble = document.createElement('div');
+        bubble.className = `bubble ${role==='user'?'q':'a'}`;
+        const timeStr = new Date(timestamp).toLocaleTimeString();
+        bubble.innerHTML = `<div class="meta"><span class="role">${role==='user'?'❓ Otázka':'✅ Odpověď'}</span><span>🕐 ${timeStr}</span></div><pre></pre>`;
+        bubble.querySelector('pre').textContent = text;
+        chat.appendChild(bubble);
+        chat.scrollTop = chat.scrollHeight;
+        if (save) saveHistory(role, text, timestamp);
+      }
+
+      async function sendMessage(){
+        const tokenInput = tokenInputEl.value.trim();
+        const token = tokenInput || getToken();
+        const model = document.getElementById('model').value;
+        const memory = document.getElementById('memory').value;
+        const file = document.getElementById('fileInput').files[0];
+        const msg = messageEl.value.trim();
+        if (!msg && !file) return;
+
+        const headers = {'Accept':'application/json, text/plain;q=0.5, */*;q=0.1'};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        let fetchInit;
+        let requestPayload = { message: msg, memory_mode: memory };
+        if (model !== 'auto') requestPayload.model = model;
+
+        if (file){
+          const fd = new FormData();
+          fd.append('file', file);
+          const crawlHeaders = {};
+          if (token) crawlHeaders['Authorization'] = `Bearer ${token}`;
+          await fetch('/crawl', { method:'POST', headers: crawlHeaders, body: fd });
+        }
+
+        headers['Content-Type'] = 'application/json';
+        fetchInit = { method:'POST', headers, body: JSON.stringify(requestPayload) };
+
+        addBubble('user', msg || `(soubor: ${file?.name})`);
+        messageEl.value = '';
+        statusPill.textContent = 'Odesílám…';
+        progress.style.display = 'block';
+        sendBtn.disabled = true;
+
+        const endpoint = '/ask';
+        try{
+          const res = await fetch(endpoint, fetchInit);
+          const ct = res.headers.get('content-type') || '';
+          let data; let rawText = '';
+          if (ct.includes('application/json')){
+            try {
+              data = await res.json();
+            } catch(e){
+              rawText = (await res.text()) || '';
+            }
+          } else {
             rawText = (await res.text()) || '';
           }
-        } else {
-          rawText = (await res.text()) || '';
-        }
 
-        let answerText = '';
-        let ctx = null;
+          let answerText = '';
+          let ctx = null;
 
-        if (!res.ok){
-          const errMsg = (data && (data.detail || data.error)) || rawText.trim() || res.statusText;
-          answerText = `Chyba: [${res.status}] ${errMsg}`;
-        } else if (data){
-          if (data.answer){
-            answerText = data.answer;
-          } else if (Array.isArray(data.memory) || Array.isArray(data.knowledge)){
-            const parts = [];
-            if (Array.isArray(data.memory)) parts.push(data.memory.join('\n'));
-            if (Array.isArray(data.knowledge)) parts.push(data.knowledge.join('\n'));
-            answerText = parts.join('\n') || '[prázdná odpověď]';
+          if (!res.ok){
+            const errMsg = (data && (data.detail || data.error)) || rawText.trim() || res.statusText;
+            answerText = `Chyba: [${res.status}] ${errMsg}`;
+          } else if (data){
+            if (data.answer){
+              answerText = data.answer;
+            } else if (Array.isArray(data.memory) || Array.isArray(data.knowledge)){
+              const parts = [];
+              if (Array.isArray(data.memory)) parts.push(data.memory.join('\n'));
+              if (Array.isArray(data.knowledge)) parts.push(data.knowledge.join('\n'));
+              answerText = parts.join('\n') || '[prázdná odpověď]';
+            } else {
+              answerText = data.detail || '[prázdná odpověď]';
+            }
+            ctx = data.context || { memory: data.memory, knowledge: data.knowledge };
           } else {
-            answerText = data.detail || '[prázdná odpověď]';
+            answerText = rawText.trim() || `[${res.status}] Odpověď bez JSON (Content-Type: ${ct || 'n/a'})`;
           }
-          ctx = data.context || { memory: data.memory, knowledge: data.knowledge };
-        } else {
-          answerText = rawText.trim() || `[${res.status}] Odpověď bez JSON (Content-Type: ${ct || 'n/a'})`;
-        }
 
-        addBubble('assistant', answerText);
-        document.getElementById('contextBox').textContent = ctx ? JSON.stringify(ctx, null, 2) : '(žádný)';
-        const debugBox = document.getElementById('debugBox');
-        const debugData = {
-          endpoint,
-          request: requestPayload,
-          status: res.status,
-          contentType: ct,
-          json: !!data,
-          bodyPreview: data ? JSON.stringify(data).slice(0,200) : rawText.slice(0,200)
-        };
-        debugBox.textContent = JSON.stringify(debugData, null, 2);
-        if ((data && JSON.stringify(data).length > 200) || (!data && rawText.length > 200)) {
-          showFullBtn.style.display = 'inline-block';
-          showFullBtn.onclick = () => {
-            debugBox.textContent = JSON.stringify({
-              ...debugData,
-              body: data || rawText
-            }, null, 2);
-            showFullBtn.style.display = 'none';
+          addBubble('assistant', answerText);
+          document.getElementById('contextBox').textContent = ctx ? JSON.stringify(ctx, null, 2) : '(žádný)';
+          const debugBox = document.getElementById('debugBox');
+          const debugData = {
+            endpoint,
+            request: requestPayload,
+            status: res.status,
+            contentType: ct,
+            json: !!data,
+            bodyPreview: data ? JSON.stringify(data).slice(0,200) : rawText.slice(0,200)
           };
-        } else {
-          showFullBtn.style.display = 'none';
-          showFullBtn.onclick = null;
+          debugBox.textContent = JSON.stringify(debugData, null, 2);
+          if ((data && JSON.stringify(data).length > 200) || (!data && rawText.length > 200)) {
+            showFullBtn.style.display = 'inline-block';
+            showFullBtn.onclick = () => {
+              debugBox.textContent = JSON.stringify({
+                ...debugData,
+                body: data || rawText
+              }, null, 2);
+              showFullBtn.style.display = 'none';
+            };
+          } else {
+            showFullBtn.style.display = 'none';
+            showFullBtn.onclick = null;
+          }
+        }catch(err){
+          addBubble('assistant', `Chyba: ${err?.message || err}`);
+        }finally{
+          progress.style.display = 'none';
+          sendBtn.disabled = false;
+          statusPill.textContent = 'Připraveno';
         }
-      }catch(err){
-        addBubble('assistant', `Chyba: ${err?.message || err}`);
-      }finally{
-        progress.style.display = 'none';
-        sendBtn.disabled = false;
-        statusPill.textContent = 'Připraveno';
       }
-    }
 
-    messageEl.addEventListener('keydown', (e)=>{ if (e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); sendMessage(); }});
-    sendBtn.addEventListener('click', sendMessage);
-    clearBtn.addEventListener('click', ()=>{ chat.innerHTML=''; });
-    document.getElementById('model').addEventListener('change', updateModelHelp);
-    saveTokenBtn.addEventListener('click', ()=>{
-      const val = tokenInputEl.value.trim();
-      if (val){
-        localStorage.setItem('api_key', val);
+      messageEl.addEventListener('keydown', (e)=>{ if (e.key==='Enter' && (e.ctrlKey||e.metaKey)){ e.preventDefault(); sendMessage(); }});
+      sendBtn.addEventListener('click', sendMessage);
+      clearBtn.addEventListener('click', ()=>{ chat.innerHTML=''; localStorage.removeItem('chat_history'); });
+      document.getElementById('model').addEventListener('change', updateModelHelp);
+      autoModelChk.addEventListener('change', ()=>{
+        const sel = document.getElementById('model');
+        if (autoModelChk.checked){ sel.value='auto'; sel.disabled=true; }
+        else{ sel.disabled=false; }
+        updateModelHelp();
+      });
+      saveTokenModalBtn.addEventListener('click', ()=>{
+        const val = tokenInputEl.value.trim();
+        if (val){
+          localStorage.setItem('api_key', val);
+          updateTokenUI();
+        }
+      });
+      logoutBtn.addEventListener('click', ()=>{
+        localStorage.removeItem('api_key');
         updateTokenUI();
-      }
-    });
-    changeTokenBtn.addEventListener('click', ()=>{
-      tokenInputEl.value = getToken();
-      localStorage.removeItem('api_key');
-      updateTokenUI();
-      tokenInputEl.focus();
-    });
+      });
 
-    document.addEventListener('DOMContentLoaded', ()=>{
-      runSanityTests();
-      updateTokenUI();
-      loadModels();
-      updateModelHelp();
-    });
+      document.addEventListener('DOMContentLoaded', ()=>{
+        runSanityTests();
+        updateTokenUI();
+        loadModels();
+        loadHistory();
+        const sel = document.getElementById('model');
+        if (autoModelChk.checked){ sel.disabled = true; sel.value='auto'; }
+        updateModelHelp();
+      });
   </script>
 </body>
 </html>
