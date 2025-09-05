@@ -107,15 +107,13 @@
 
       <div class="sep"></div>
 
-      <label>Model</label>
-      <div class="row">
-        <select id="model">
-          <option value="">Automaticky</option>
-          <option value="llama3:8b">LLaMA 3 8B</option>
-          <option value="mistral:7b">Mistral 7B</option>
-          <option value="mixtral:8x7b">Mixtral 8x7B</option>
-        </select>
-      </div>
+        <label>Model</label>
+        <div class="row">
+          <select id="model">
+            <option value="">Automaticky</option>
+          </select>
+        </div>
+        <div id="modelHelp" class="small" style="color:var(--muted);margin-top:.4rem"></div>
 
       <div class="row" style="margin-top:.4rem">
         <label class="switch"><input id="memoryPrivate" type="checkbox" /> Soukromá paměť</label>
@@ -174,19 +172,63 @@
     const apikeyRow   = $('#apikeyRow');
     const whoRow     = $('#whoRow');
     const who        = $('#who');
-    const statusChip = $('#status');
-    const logo       = $('#logo');
-    const modelSel   = $('#model');
-    const promptEl   = $('#prompt');
-    const fileEl     = $('#file');
-    const messagesEl = $('#messages');
+      const statusChip = $('#status');
+      const logo       = $('#logo');
+      const modelSel   = $('#model');
+      const modelHelp  = $('#modelHelp');
+      const promptEl   = $('#prompt');
+      const fileEl     = $('#file');
+      const messagesEl = $('#messages');
     const downloadBtn= $('#download');
     const contextEl  = $('#context');
     const debugEl    = $('#debug');
 
-    const LS_KEY     = 'fura.apikey';
-    const LS_CHAT    = 'fura.chatlog';
-    const TTL_MS     = 7 * 24 * 60 * 60 * 1000; // 7 dní
+      const LS_KEY     = 'fura.apikey';
+      const LS_CHAT    = 'fura.chatlog';
+      const TTL_MS     = 7 * 24 * 60 * 60 * 1000; // 7 dní
+
+      async function loadModels(){
+        try {
+          const res = await fetch('/static/models_meta.json');
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const meta = await res.json();
+          const entries = Object.entries(meta);
+          entries.sort((a,b)=>(a[1].label||a[0]).localeCompare(b[1].label||b[0]));
+          for (const [id, info] of entries){
+            const opt = document.createElement('option');
+            const label = info.label || id;
+            opt.value = id;
+            opt.textContent = label;
+            if (info.tip || info.description) opt.title = info.tip || info.description;
+            opt.dataset.tip = info.tip || info.description || '';
+            opt.dataset.description = info.description || '';
+            opt.dataset.group = info.group || '';
+            opt.dataset.tier = info.tier || '';
+            opt.dataset.difficulty = info.difficulty || '';
+            modelSel.appendChild(opt);
+          }
+        } catch(e){
+          console.warn('Načtení models_meta.json selhalo:', e);
+        }
+        updateModelHelp();
+      }
+
+      function updateModelHelp(){
+        if (!modelHelp) return;
+        const opt = modelSel.options[modelSel.selectedIndex];
+        if (!opt || !opt.value){
+          modelHelp.textContent = 'Automatický výběr modelu backendem.';
+          return;
+        }
+        const parts = [];
+        if (opt.dataset.tip) parts.push(opt.dataset.tip);
+        if (opt.dataset.group) parts.push(`skupina: ${opt.dataset.group}`);
+        if (opt.dataset.tier) parts.push(`tier: ${opt.dataset.tier}`);
+        if (opt.dataset.difficulty) parts.push(`tíha: ${opt.dataset.difficulty}`);
+        modelHelp.textContent = parts.join(' — ');
+      }
+
+      modelSel.addEventListener('change', updateModelHelp);
 
     let apiKey = localStorage.getItem(LS_KEY) || '';
     let chat = loadChat();
@@ -376,7 +418,8 @@ Websearch: ${$('#useWeb').checked ? 'ano' : 'ne'}`;
     };
 
     // initial apikey into field (so jde rovnou „Uložit“)
-    if (!apiKey) apikeyInput.value = localStorage.getItem(LS_KEY) || '';
+      if (!apiKey) apikeyInput.value = localStorage.getItem(LS_KEY) || '';
+      loadModels();
   </script>
 </body>
 </html>
