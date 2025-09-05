@@ -1,35 +1,382 @@
-<!doctype html>
-<meta charset="utf-8">
-<title>FURA UI</title>
-<h1>FURA UI</h1>
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <title>JARVIK — FURA UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#0c0f0c; --panel:#111611; --ink:#c8f6c8; --muted:#7dd97d;
+      --accent:#2bdc2b; --line:#1f2d1f; --danger:#ff6b6b;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; padding:0; background:var(--bg); color:var(--ink);
+      font:15px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    a{color:var(--muted); text-decoration:none}
+    header{
+      display:flex; gap:12px; align-items:center; padding:14px 16px; border-bottom:1px solid var(--line);
+      position:sticky; top:0; background:linear-gradient( to bottom, rgba(12,15,12,.98), rgba(12,15,12,.92) );
+      z-index:10;
+    }
+    #logo{
+      width:40px; height:40px; filter:drop-shadow(0 0 8px rgba(43,220,43,.25));
+      transition: transform .6s ease;
+    }
+    .spin{ animation:spin .8s linear infinite }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
+    .title{font-weight:800; letter-spacing:.5px}
+    .grow{flex:1}
+    .chip{border:1px solid var(--line); padding:3px 8px; border-radius:999px; color:var(--muted)}
+    main{display:grid; grid-template-columns: 320px 1fr 360px; gap:14px; padding:14px; height:calc(100% - 70px)}
+    .col{min-height:0}
+    .panel{
+      background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; min-height:0;
+      box-shadow:0 1px 0 rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.02);
+    }
+    h3{margin:.2rem 0 .6rem 0; color:var(--muted); font-size:13px; letter-spacing:.3px; text-transform:uppercase}
+    label{display:block; margin:.35rem 0 .15rem 0; color:var(--muted); font-size:12px}
+    input[type="text"], input[type="password"], textarea, select{
+      width:100%; background:#0f140f; color:var(--ink); border:1px solid var(--line);
+      padding:.6rem .7rem; border-radius:8px; outline:none;
+    }
+    textarea{ resize:vertical; min-height:120px; }
+    .row{display:flex; gap:8px; align-items:center}
+    .row.wrap{flex-wrap:wrap}
+    .btn{
+      background:var(--accent); color:#061006; border:none; border-radius:10px; padding:.55rem .9rem; font-weight:700;
+      box-shadow:0 0 0 0 rgba(43,220,43,.45); transition: box-shadow .15s ease, transform .04s ease;
+      cursor:pointer;
+    }
+    .btn:hover{ box-shadow:0 0 0 5px rgba(43,220,43,.08) }
+    .btn:active{ transform:translateY(1px) }
+    .btn.ghost{ background:#0f140f; color:var(--muted); border:1px solid var(--line) }
+    .switch{display:flex; align-items:center; gap:8px; user-select:none}
+    .switch input{ accent-color:var(--accent) }
+    .badge{padding:.2rem .45rem; border:1px solid var(--line); border-radius:6px; color:var(--muted); font-size:12px}
+    .sep{height:1px; background:var(--line); margin:.6rem 0}
+    /* chat */
+    #chat{display:flex; flex-direction:column; gap:10px; height:100%; min-height:0}
+    #messages{flex:1; overflow:auto; padding-right:2px; scroll-behavior:smooth}
+    .msg{display:flex; gap:10px; align-items:flex-start}
+    .bubble{
+      max-width:100%; padding:.55rem .7rem; border-radius:10px; white-space:pre-wrap; word-break:break-word;
+      border:1px solid var(--line);
+    }
+    .user .bubble{ background:#0b130b; }
+    .ai .bubble{ background:#0f1b0f; border-color:#234923 }
+    .meta{color:var(--muted); font-size:12px; margin-bottom:2px}
+    .right{justify-content:flex-end}
+    /* right side collapsibles */
+    details{border:1px solid var(--line); border-radius:10px; padding:10px; background:#0f140f}
+    summary{cursor:pointer; color:var(--muted); font-weight:700; list-style:none}
+    summary::-webkit-details-marker{display:none}
+    pre.block{margin:.4rem 0 0 0; padding:.6rem .7rem; border:1px dashed var(--line); border-radius:8px; background:#0b0f0b; white-space:pre-wrap}
+    .hidden{display:none !important}
+    .small{font-size:12px}
+  </style>
+</head>
+<body>
+  <header>
+    <img id="logo" src="/static/alternativ.png" alt="JARVIK" />
+    <div class="title">JARVIK</div>
+    <div class="grow"></div>
+    <span id="status" class="chip">🟢 připraven</span>
+  </header>
 
-<label>Model: <input id="model" value="llama3:8b"></label><br>
-<label>X-API-Key: <input id="xkey" placeholder="(nepovinné)"></label><br><br>
+  <main>
+    <!-- left controls -->
+    <section class="col panel" aria-label="Nastavení">
+      <h3>Nastavení</h3>
 
-<textarea id="msg" rows="6" cols="80" placeholder="Zadej dotaz..."></textarea><br>
-<button id="send">Odeslat</button>
+      <div id="apikeyRow" class="row wrap">
+        <div style="flex:1 1 100%">
+          <label>API Key (uloží se do prohlížeče)</label>
+          <input id="apikey" type="text" placeholder="vložit…">
+        </div>
+        <button id="saveKey" class="btn">Uložit</button>
+        <button id="clearKey" class="btn ghost">Odhlásit</button>
+      </div>
 
-<pre id="out" style="white-space: pre-wrap; background:#f6f6f6; padding:1em; margin-top:1em;"></pre>
+      <div id="whoRow" class="row hidden">
+        <span class="badge">Přihlášen: <strong id="who">neznámý</strong></span>
+        <button id="logout" class="btn ghost">Změnit klíč</button>
+      </div>
 
-<script>
-const $ = (id) => document.getElementById(id);
+      <div class="sep"></div>
 
-$("send").onclick = async () => {
-  const body = {
-    message: $("msg").value,
-    model: $("model").value
-  };
-  const headers = { "Content-Type": "application/json" };
-  const k = $("xkey").value.trim();
-  if (k) headers["X-API-Key"] = k;
+      <label>Model</label>
+      <div class="row">
+        <select id="model">
+          <option value="">Automaticky</option>
+          <option value="llama3:8b">LLaMA 3 8B</option>
+          <option value="mistral:7b">Mistral 7B</option>
+          <option value="mixtral:8x7b">Mixtral 8x7B</option>
+        </select>
+      </div>
 
-  $("out").textContent = "⏳ Odesílám...";
-  try {
-    const r = await fetch("/ask", { method: "POST", headers, body: JSON.stringify(body) });
-    const data = await r.json();
-    $("out").textContent = data.response ?? JSON.stringify(data, null, 2);
-  } catch (e) {
-    $("out").textContent = "Chyba: " + e;
-  }
-};
-</script>
+      <div class="row" style="margin-top:.4rem">
+        <label class="switch"><input id="memoryPrivate" type="checkbox" /> Soukromá paměť</label>
+      </div>
+      <div class="row">
+        <label class="switch"><input id="useWeb" type="checkbox" /> Websearch</label>
+      </div>
+
+      <div class="sep"></div>
+
+      <label>Přiložit TXT k dotazu</label>
+      <input id="file" type="file" accept=".txt,text/plain" />
+
+      <div class="sep"></div>
+
+      <div class="row">
+        <button id="newChat" class="btn ghost">Nový chat</button>
+        <span class="small" id="ttlInfo" title="Historie se drží 7 dní">⏳ 7 dní</span>
+      </div>
+    </section>
+
+    <!-- center chat -->
+    <section class="col panel" aria-label="Chat">
+      <div id="chat">
+        <div id="messages" aria-live="polite"></div>
+
+        <div>
+          <label>Dotaz</label>
+          <textarea id="prompt" placeholder="Zadej dotaz… (Enter = odeslat, Shift+Enter = nový řádek)"></textarea>
+          <div class="row" style="margin-top:.4rem">
+            <button id="send" class="btn">Odeslat</button>
+            <button id="download" class="btn ghost hidden">Stáhnout odpověď (.txt)</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- right tools -->
+    <aside class="col" aria-label="Nástroje">
+      <details open>
+        <summary>📖 Kontext</summary>
+        <pre id="context" class="block small">(zatím prázdné)</pre>
+      </details>
+      <div style="height:8px"></div>
+      <details>
+        <summary>🧪 Debug</summary>
+        <pre id="debug" class="block small">(žádný)</pre>
+      </details>
+    </aside>
+  </main>
+
+  <script>
+    /*** --- persistence & helpers --- ***/
+    const $ = s => document.querySelector(s);
+    const apikeyInput = $('#apikey');
+    const apikeyRow   = $('#apikeyRow');
+    const whoRow     = $('#whoRow');
+    const who        = $('#who');
+    const statusChip = $('#status');
+    const logo       = $('#logo');
+    const modelSel   = $('#model');
+    const promptEl   = $('#prompt');
+    const fileEl     = $('#file');
+    const messagesEl = $('#messages');
+    const downloadBtn= $('#download');
+    const contextEl  = $('#context');
+    const debugEl    = $('#debug');
+
+    const LS_KEY     = 'fura.apikey';
+    const LS_CHAT    = 'fura.chatlog';
+    const TTL_MS     = 7 * 24 * 60 * 60 * 1000; // 7 dní
+
+    let apiKey = localStorage.getItem(LS_KEY) || '';
+    let chat = loadChat();
+
+    function loadChat(){
+      let raw = localStorage.getItem(LS_CHAT);
+      let arr = [];
+      try{ arr = raw ? JSON.parse(raw) : [] }catch{ arr = [] }
+      const now = Date.now();
+      arr = arr.filter(m => now - m.t < TTL_MS);
+      localStorage.setItem(LS_CHAT, JSON.stringify(arr));
+      return arr;
+    }
+    function pushChat(role, text){
+      const item = {role, text, t: Date.now()};
+      chat.push(item);
+      localStorage.setItem(LS_CHAT, JSON.stringify(chat));
+      renderChat();
+    }
+    function renderChat(){
+      messagesEl.innerHTML = '';
+      for (const m of chat){
+        const row = document.createElement('div');
+        row.className = 'msg ' + (m.role === 'user' ? 'right user' : 'ai');
+        const bubble = document.createElement('div');
+        const meta = document.createElement('div');
+        meta.className = 'meta';
+        meta.textContent = (m.role==='user'?'Ty':'AI') + ' • ' + new Date(m.t).toLocaleTimeString();
+        bubble.className = 'bubble';
+        bubble.textContent = m.text;
+        row.appendChild(document.createElement('div')).className='grow-0'; // spacer (align)
+        const wrap = document.createElement('div');
+        wrap.appendChild(meta);
+        wrap.appendChild(bubble);
+        row.appendChild(wrap);
+        messagesEl.appendChild(row);
+      }
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+    renderChat();
+
+    /*** --- API key UX --- ***/
+    function showLoggedIn(){
+      apikeyRow.classList.add('hidden');
+      whoRow.classList.remove('hidden');
+      who.textContent = maskKey(apiKey);
+    }
+    function showLoggedOut(){
+      whoRow.classList.add('hidden');
+      apikeyRow.classList.remove('hidden');
+    }
+    function maskKey(k){
+      if (!k) return 'neznámý';
+      if (k.length <= 6) return '•••';
+      return k.slice(0,3) + '…' + k.slice(-3);
+    }
+    if (apiKey){
+      showLoggedIn();
+    } else {
+      showLoggedOut();
+    }
+    $('#saveKey').onclick = () => {
+      apiKey = apikeyInput.value.trim();
+      if (!apiKey){ alert('Vlož API-Key'); return; }
+      localStorage.setItem(LS_KEY, apiKey);
+      apikeyInput.value = '';
+      showLoggedIn();
+    };
+    $('#clearKey').onclick = () => {
+      localStorage.removeItem(LS_KEY);
+      apiKey = '';
+      showLoggedOut();
+    };
+    $('#logout').onclick = () => {
+      localStorage.removeItem(LS_KEY);
+      apiKey = '';
+      showLoggedOut();
+    };
+
+    /*** --- Compose message (file + toggles) --- ***/
+    async function buildMessage(){
+      const txt = promptEl.value.trim();
+      let fileTxt = '';
+      const f = fileEl.files[0];
+      if (f){
+        try { fileTxt = await f.text(); } catch {}
+      }
+      const lines = [];
+      if ($('#useWeb').checked) lines.push('[websearch:on]');
+      lines.push(txt);
+      if (fileTxt) lines.push('\n\n[attachment.txt]\n' + fileTxt);
+      return lines.join('\n');
+    }
+
+    /*** --- send --- ***/
+    async function send(){
+      const message = await buildMessage();
+      if (!message){ return; }
+
+      // UI: pending
+      statusChip.textContent = '⏳ zpracovávám…';
+      logo.classList.add('spin');
+
+      pushChat('user', message);
+
+      // body for /ask (server sám defaultuje model, takže při „Automaticky“ posíláme prázdný)
+      const payload = {
+        message,
+        model: modelSel.value || undefined,
+        temperature: 0.7,
+        private: $('#memoryPrivate').checked ? 1 : 0
+      };
+
+      try{
+        const headers = {'Content-Type':'application/json'};
+        if (apiKey) headers['X-API-Key'] = apiKey;
+
+        const res = await fetch('/ask', { method:'POST', headers, body: JSON.stringify(payload) });
+        const ct = (res.headers.get('Content-Type')||'').toLowerCase();
+
+        let answer = '';
+        let debug = '';
+
+        if (!res.ok){
+          if (ct.includes('application/json')){
+            const j = await res.json();
+            answer = 'Chyba: ' + (j.detail || j.error || res.status);
+            debug  = JSON.stringify(j, null, 2);
+          } else {
+            answer = 'Chyba: ' + res.status + ' ' + res.statusText;
+          }
+          pushChat('assistant', answer);
+          debugEl.textContent = debug || '(žádný detail)';
+          downloadBtn.classList.add('hidden');
+          return;
+        }
+
+        if (ct.includes('application/json')){
+          const j = await res.json();
+          answer = j.response || j.answer || '(prázdná odpověď)';
+          debug  = j.raw ? JSON.stringify(j.raw, null, 2) : '';
+        } else {
+          answer = await res.text();
+        }
+
+        // Kontext: velmi jednoduché – ukážeme použité volby
+        contextEl.textContent =
+`Model: ${modelSel.value || 'automaticky'}
+Soukromá paměť: ${$('#memoryPrivate').checked ? 'ano' : 'ne'}
+Websearch: ${$('#useWeb').checked ? 'ano' : 'ne'}`;
+
+        // Debug
+        debugEl.textContent = debug || '(žádný)';
+
+        // Chat + možnost stáhnout .txt
+        pushChat('assistant', answer);
+        prepareDownload(answer);
+
+      }catch(err){
+        pushChat('assistant', 'Chyba spojení: ' + err);
+        debugEl.textContent = String(err);
+        downloadBtn.classList.add('hidden');
+      }finally{
+        statusChip.textContent = '🟢 připraven';
+        logo.classList.remove('spin');
+        promptEl.value = '';
+        fileEl.value = '';
+      }
+    }
+
+    function prepareDownload(text){
+      const blob = new Blob([text], {type:'text/plain;charset=utf-8'});
+      const url  = URL.createObjectURL(blob);
+      downloadBtn.href = url;
+      downloadBtn.download = 'odpoved.txt';
+      downloadBtn.classList.remove('hidden');
+    }
+
+    /*** --- events --- ***/
+    $('#send').onclick = send;
+    promptEl.addEventListener('keydown', e=>{
+      if (e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); }
+    });
+    $('#newChat').onclick = ()=>{
+      chat = []; localStorage.setItem(LS_CHAT, JSON.stringify(chat));
+      renderChat(); debugEl.textContent='(žádný)'; contextEl.textContent='(zatím prázdné)'; downloadBtn.classList.add('hidden');
+    };
+
+    // initial apikey into field (so jde rovnou „Uložit“)
+    if (!apiKey) apikeyInput.value = localStorage.getItem(LS_KEY) || '';
+  </script>
+</body>
+</html>
