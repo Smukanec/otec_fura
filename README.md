@@ -2,6 +2,9 @@
 
 Veřejná vrstva (wrapper) + původní FURA app (mount pod `/core`).
 
+> **Poznámka:** Uživatelské rozhraní je nově dostupné na `http://<server>/app/`.
+> Pro obsluhu UI na `/` lze spustit aplikaci `app_ask.py`.
+
 ## Rychlý start (lokálně)
 ```bash
 python -m venv .venv && . .venv/bin/activate
