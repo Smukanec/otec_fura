@@ -3,51 +3,44 @@ import os
 from typing import Optional, Dict, Any
 
 import httpx
-from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
-from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends, Request
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 # ==== Konfigurace z ENV ====
 MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1")
-MODEL_API_KEY  = os.getenv("MODEL_API_KEY",  "mojelokalnikurvitko")
-FURA_API_KEY   = os.getenv("FURA_API_KEY")  # pokud nastavíte, bude vyžadována hlavička X-API-Key
+MODEL_API_KEY  = os.getenv("MODEL_API_KEY",  "mojelokalnikurvitko")  # klíč do model-gateway
+FURA_API_KEY   = os.getenv("FURA_API_KEY")  # pokud nastavíš, bude se vyžadovat X-API-Key
 
-# ==== FastAPI bez /docs a /redoc ====
+# ==== FastAPI bez Swaggeru (/docs záměrně vypnuto) ====
 app = FastAPI(
     title="otec-fura",
-    docs_url=None,
+    docs_url=None,            # => /docs vrací 404, to je správně
     redoc_url=None,
     openapi_url="/openapi.json",
 )
 
 router = APIRouter()
 
-# ==== UI (statika) ====
+# ==== UI (statické soubory) ====
 WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
+INDEX_PATH = os.path.join(WEBUI_DIR, "index.html")
+
+# 1) /app/ (funguje i dřívější cesta)
 app.mount("/app", StaticFiles(directory=WEBUI_DIR, html=True), name="app")
 
-# ---- Redirecty pro root a bez-lomítkový /app ----
-@router.get("/", include_in_schema=False)
-async def root_redirect_get():
+# 1a) /app (bez lomítka) -> /app/
+@router.api_route("/app", methods=["GET", "HEAD"], include_in_schema=False)
+async def app_slash_fix():
     return RedirectResponse(url="/app/", status_code=308)
 
-@router.head("/", include_in_schema=False)
-async def root_redirect_head():
-    return RedirectResponse(url="/app/", status_code=308)
-
-@router.get("/app", include_in_schema=False)
-async def app_noslash_get():
-    return RedirectResponse(url="/app/", status_code=308)
-
-@router.head("/app", include_in_schema=False)
-async def app_noslash_head():
-    return RedirectResponse(url="/app/", status_code=308)
-
-# (volitelně) /index.html – většinou netřeba, StaticFiles to řeší
-@router.get("/index.html", include_in_schema=False)
-async def index_direct():
-    index_path = os.path.join(WEBUI_DIR, "index.html")
-    return FileResponse(index_path, media_type="text/html")
+# 2) KOŘEN DOMÉNY "/" -> přímo vrátí index.html (bez přesměrování)
+@router.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+async def root_index(request: Request):
+    # curl -I (HEAD) má dostat 200 bez těla, prohlížeč (GET) dostane index.html
+    if request.method == "HEAD":
+        return HTMLResponse("", status_code=200)
+    return FileResponse(INDEX_PATH, media_type="text/html")
 
 # ==== /healthz ====
 @router.get("/healthz")
@@ -57,15 +50,16 @@ async def healthz():
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             r = await client.get(MODEL_API_BASE.rsplit("/", 1)[0] + "/healthz")
-            gw_ok = (r.status_code == 200)
-            if r.headers.get("content-type", "").startswith("application/json"):
-                meta = r.json()
-            else:
-                meta = {"raw": r.text}
+        gw_ok = (r.status_code == 200)
+        if r.headers.get("content-type", "").startswith("application/json"):
+            meta = r.json()
+        else:
+            meta = {"raw": r.text}
     except Exception as e:
         meta = {"error": str(e)}
 
-    return {"app": "otec-fura", "ok": True, "model_gateway": {"ok": gw_ok, **meta}}
+    return {"app": "otec-fura", "ok": True,
+            "model_gateway": {"ok": gw_ok, **meta}}
 
 # ==== Ověření X-API-Key (pokud FURA_API_KEY existuje) ====
 def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
@@ -76,22 +70,24 @@ def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API
 @router.post("/ask", dependencies=[Depends(require_api_key)])
 async def ask(payload: Dict[str, Any]):
     """
-    Vstup: {"message": "...", "model": "llama3:8b", "temperature": 0.7}
+    Vstup: {"message":"...", "model":"llama3:8b", "temperature":0.7}
     """
     message = (payload or {}).get("message") or ""
-    model = (payload or {}).get("model") or "llama3:8b"
+    model   = (payload or {}).get("model")   or "llama3:8b"
     temperature = (payload or {}).get("temperature", 0.7)
 
     if not message.strip():
         raise HTTPException(400, "Missing 'message'")
 
-    body = {
-        "model": model,
-        "messages": [{"role": "user", "content": message}],
-        "temperature": temperature,
-    }
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {MODEL_API_KEY}"}
-    url = f"{MODEL_API_BASE}/chat/completions" if not MODEL_API_BASE.endswith("/chat/completions") else MODEL_API_BASE
+    body = {"model": model,
+            "messages": [{"role": "user", "content": message}],
+            "temperature": temperature}
+
+    headers = {"Content-Type": "application/json",
+               "Authorization": f"Bearer {MODEL_API_KEY}"}
+    url = (f"{MODEL_API_BASE}/chat/completions"
+           if not MODEL_API_BASE.endswith("/chat/completions")
+           else MODEL_API_BASE)
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         r = await client.post(url, headers=headers, json=body)
@@ -111,14 +107,17 @@ async def ask(payload: Dict[str, Any]):
 @router.post("/v1/chat", dependencies=[Depends(require_api_key)])
 async def v1_chat(body: Dict[str, Any]):
     """
-    Kompatibilita: {"model": "...", "messages": [...]}
-    Vrací: {"answer": "...", "raw": <původní odpověď gateway>}
+    Pro kompatibilitu: {"model":"...","messages":[...]}
+    Vrací: {"answer":"...", "raw":<celá odpověď>}
     """
     if not body or not body.get("messages"):
         raise HTTPException(400, "Missing 'messages'")
 
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {MODEL_API_KEY}"}
-    url = f"{MODEL_API_BASE}/chat/completions" if not MODEL_API_BASE.endswith("/chat/completions") else MODEL_API_BASE
+    headers = {"Content-Type": "application/json",
+               "Authorization": f"Bearer {MODEL_API_KEY}"}
+    url = (f"{MODEL_API_BASE}/chat/completions"
+           if not MODEL_API_BASE.endswith("/chat/completions")
+           else MODEL_API_BASE)
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         r = await client.post(url, headers=headers, json=body)
@@ -134,5 +133,5 @@ async def v1_chat(body: Dict[str, Any]):
     )
     return {"answer": text, "raw": data}
 
-# Připojit router
+# připojit router až nakonec
 app.include_router(router)
