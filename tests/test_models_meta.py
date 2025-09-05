@@ -8,6 +8,11 @@ def test_allowed_models():
     assert "command-r" in ALLOWED_MODELS
     assert "codellama-7b" in ALLOWED_MODELS
     assert "llama3:8b" in ALLOWED_MODELS
+    assert "mistral:7b" in ALLOWED_MODELS
+    assert "mixtral:8x7b" in ALLOWED_MODELS
+    assert "starcoder:7b" in ALLOWED_MODELS
+    assert "nous-hermes2:latest" in ALLOWED_MODELS
+    assert "gpt-oss:latest" in ALLOWED_MODELS
     assert "gpt4" not in ALLOWED_MODELS
     assert "llama2" not in ALLOWED_MODELS
 
