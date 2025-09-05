@@ -4,15 +4,15 @@ from typing import Optional, Dict, Any
 
 import httpx
 from fastapi import FastAPI, APIRouter, HTTPException, Header, Depends
-from fastapi.responses import JSONResponse, RedirectResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
-# ==== Konfigurace z ENV ====
+# ==== ENV ====
 MODEL_API_BASE = os.getenv("MODEL_API_BASE", "http://100.115.183.37:8095/v1")
-MODEL_API_KEY  = os.getenv("MODEL_API_KEY",  "mojelokalnikurvitko")  # klíč do model-gateway
-FURA_API_KEY   = os.getenv("FURA_API_KEY")                           # pokud nastavíš, vyžaduje se X-API-Key
+MODEL_API_KEY  = os.getenv("MODEL_API_KEY", "mojelokalnikurvitko")
+FURA_API_KEY   = os.getenv("FURA_API_KEY")  # když je nastaven, vyžaduje se X-API-Key
 
-# ==== FastAPI bez /docs a /redoc ====
+# ==== FastAPI: bez Swagger UI, ale OpenAPI necháme na /openapi.json ====
 app = FastAPI(
     title="otec-fura",
     docs_url=None,
@@ -22,33 +22,16 @@ app = FastAPI(
 
 router = APIRouter()
 
-# ==== UI (/app/) ====
-WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
-app.mount("/app", StaticFiles(directory=WEBUI_DIR, html=True), name="app")
-
-# /  ->  308 /app/   (GET i HEAD, aby curl -I nepadal 405)
-@router.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
-async def root_redirect():
-    return RedirectResponse(url="/app/", status_code=308)
-
-# (volitelně) přímý náhled indexu
-@router.get("/index.html", include_in_schema=False)
-async def index_direct():
-    index_path = os.path.join(WEBUI_DIR, "index.html")
-    return FileResponse(index_path, media_type="text/html")
-
-
-# ==== Zdraví ====
+# ---------- Health ----------
 @router.get("/healthz")
 async def healthz():
-    # ping na model gateway healthz – best-effort
     gw_ok = False
-    meta: Dict[str, Any] = {}
+    meta: Dict[str, Any]
     try:
-        base = MODEL_API_BASE.rstrip("/")
-        gw_healthz = f"{base.rsplit('/', 1)[0]}/healthz" if base.endswith("/v1") else f"{base}/healthz"
         async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(gw_healthz)
+            # očekáváme /healthz vedle /v1
+            base = MODEL_API_BASE.rsplit("/", 1)[0] if MODEL_API_BASE.endswith("/v1") else MODEL_API_BASE
+            r = await client.get(f"{base}/healthz")
             gw_ok = (r.status_code == 200)
             if r.headers.get("content-type", "").startswith("application/json"):
                 meta = r.json()
@@ -57,16 +40,18 @@ async def healthz():
     except Exception as e:
         meta = {"error": str(e)}
 
-    return {"app": "otec-fura", "ok": True, "model_gateway": {"ok": gw_ok, **meta}}
+    return {
+        "app": "otec-fura",
+        "ok": True,
+        "model_gateway": {"ok": gw_ok, **meta},
+    }
 
-
-# ==== Ověření X-API-Key (pokud FURA_API_KEY existuje) ====
+# ---------- API key ----------
 def require_api_key(x_api_key: Optional[str] = Header(default=None, alias="X-API-Key")):
     if FURA_API_KEY and x_api_key != FURA_API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
 
-
-# ==== Jednoduché /ask ====
+# ---------- /ask (jednoduché) ----------
 @router.post("/ask", dependencies=[Depends(require_api_key)])
 async def ask(payload: Dict[str, Any]):
     """
@@ -85,8 +70,15 @@ async def ask(payload: Dict[str, Any]):
         "temperature": temperature,
     }
 
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {MODEL_API_KEY}"}
-    url = f"{MODEL_API_BASE.rstrip('/')}/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {MODEL_API_KEY}",
+    }
+    url = (
+        f"{MODEL_API_BASE}/chat/completions"
+        if not MODEL_API_BASE.endswith("/chat/completions")
+        else MODEL_API_BASE
+    )
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         r = await client.post(url, headers=headers, json=body)
@@ -102,19 +94,21 @@ async def ask(payload: Dict[str, Any]):
     )
     return {"response": text}
 
-
-# ==== OpenAI-like /v1/chat ====
+# ---------- /v1/chat (OpenAI-like) ----------
 @router.post("/v1/chat", dependencies=[Depends(require_api_key)])
 async def v1_chat(body: Dict[str, Any]):
-    """
-    Kompatibilita: {"model": "...", "messages": [...]}
-    Vrací: {"answer": "...", "raw": <původní odpověď gateway>}
-    """
     if not body or not body.get("messages"):
         raise HTTPException(400, "Missing 'messages'")
 
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {MODEL_API_KEY}"}
-    url = f"{MODEL_API_BASE.rstrip('/')}/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {MODEL_API_KEY}",
+    }
+    url = (
+        f"{MODEL_API_BASE}/chat/completions"
+        if not MODEL_API_BASE.endswith("/chat/completions")
+        else MODEL_API_BASE
+    )
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         r = await client.post(url, headers=headers, json=body)
@@ -130,6 +124,16 @@ async def v1_chat(body: Dict[str, Any]):
     )
     return {"answer": text, "raw": data}
 
-
-# připojit router
+# ---------- router připojit dřív, než namountujeme statiku ----------
 app.include_router(router)
+
+# ---------- UI na ROOT "/" ----------
+WEBUI_DIR = os.path.join(os.path.dirname(__file__), "webui")
+# /index.html (a vše okolo) ze složky webui
+# Statika se přidá AŽ PO routeru -> API endpoints zůstanou funkční.
+app.mount("/", StaticFiles(directory=WEBUI_DIR, html=True), name="ui")
+
+# Volitelný přímý náhled indexu (není nutný, StaticFiles to umí sám)
+@app.get("/index.html", include_in_schema=False)
+async def index_direct():
+    return FileResponse(os.path.join(WEBUI_DIR, "index.html"), media_type="text/html")
