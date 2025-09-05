@@ -1,60 +1,35 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>FURA</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 960px; margin: 32px auto; padding: 0 16px; }
-  h1 { margin: 0 0 12px; }
-  .row { margin: 8px 0; }
-  textarea { width: 100%; height: 140px; }
-  input[type=text] { width: 320px; }
-  pre { white-space: pre-wrap; background: #fafafa; border: 1px solid #eee; padding: 12px; }
-  small { color: #666; }
-</style>
-
+<title>FURA UI</title>
 <h1>FURA UI</h1>
 
-<div class="row">
-  <label>Model: <input id="model" type="text" value="llama3:8b"></label>
-</div>
+<label>Model: <input id="model" value="llama3:8b"></label><br>
+<label>X-API-Key: <input id="xkey" placeholder="(nepovinné)"></label><br><br>
 
-<div class="row">
-  <label>X-API-Key (nech prázdné pokud není vyžadováno):
-    <input id="apikey" type="text" placeholder="FURA_API_KEY (volitelné)">
-  </label>
-</div>
+<textarea id="msg" rows="6" cols="80" placeholder="Zadej dotaz..."></textarea><br>
+<button id="send">Odeslat</button>
 
-<div class="row">
-  <textarea id="msg" placeholder="Zadej dotaz…"></textarea>
-</div>
-
-<div class="row">
-  <button id="send">Odeslat</button>
-</div>
-
-<pre id="out"></pre>
-<small>Tip: API endpoints – <code>/ask</code>, <code>/v1/chat</code>, <code>/healthz</code></small>
+<pre id="out" style="white-space: pre-wrap; background:#f6f6f6; padding:1em; margin-top:1em;"></pre>
 
 <script>
-  const btn = document.getElementById('send');
-  const out = document.getElementById('out');
+const $ = (id) => document.getElementById(id);
 
-  btn.addEventListener('click', async () => {
-    out.textContent = '…';
-    const headers = { 'Content-Type': 'application/json' };
-    const key = document.getElementById('apikey').value.trim();
-    if (key) headers['X-API-Key'] = key;
+$("send").onclick = async () => {
+  const body = {
+    message: $("msg").value,
+    model: $("model").value
+  };
+  const headers = { "Content-Type": "application/json" };
+  const k = $("xkey").value.trim();
+  if (k) headers["X-API-Key"] = k;
 
-    const body = {
-      message: document.getElementById('msg').value,
-      model: document.getElementById('model').value
-    };
-
-    try {
-      const r = await fetch('/ask', { method:'POST', headers, body: JSON.stringify(body) });
-      const data = await r.json();
-      out.textContent = data.response ?? JSON.stringify(data, null, 2);
-    } catch (e) {
-      out.textContent = 'ERROR: ' + e;
-    }
-  });
+  $("out").textContent = "⏳ Odesílám...";
+  try {
+    const r = await fetch("/ask", { method: "POST", headers, body: JSON.stringify(body) });
+    const data = await r.json();
+    $("out").textContent = data.response ?? JSON.stringify(data, null, 2);
+  } catch (e) {
+    $("out").textContent = "Chyba: " + e;
+  }
+};
 </script>
