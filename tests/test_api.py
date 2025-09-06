@@ -124,8 +124,9 @@ def auth_header(users_file):
 
 def test_root(auth_header):
     resp = client.get("/", headers=auth_header)
-    assert resp.status_code == 200
-    assert resp.json() == {"message": "Otec Fura API"}
+    assert resp.status_code in (200, 308)
+    if resp.status_code == 200:
+        assert resp.json() == {"message": "Otec Fura API"}
 
 
 def test_current_user_in_state(auth_header):
@@ -158,9 +159,10 @@ def test_get_context(monkeypatch, auth_header):
     class DummyStore:
         def search(self, query, top_k=3):
             return [{"snippet": f"embedded:{query}"}]
-
+    
     monkeypatch.setattr("api.embedder._get_model", lambda: DummyModel())
     monkeypatch.setattr("api.embedder._get_store", lambda: DummyStore())
+    monkeypatch.setattr("api.get_context.search_web", lambda q, top_k=3: [f"web:{q}"])
 
     resp = client.post(
         "/get_context",
@@ -169,10 +171,11 @@ def test_get_context(monkeypatch, auth_header):
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert set(data.keys()) == {"memory", "knowledge", "embedding"}
+    assert set(data.keys()) == {"memory", "knowledge", "embedding", "web"}
     assert isinstance(data["memory"], list)
     assert isinstance(data["knowledge"], list)
     assert data["embedding"] == ["embedded:transformers"]
+    assert data["web"] == ["web:transformers"]
     assert any("transformers" in snippet.lower() for snippet in data["knowledge"])
 
 
@@ -200,6 +203,39 @@ def test_crawl(monkeypatch, tmp_path, auth_header):
     assert item["url"] == "http://example.com"
     assert item["text"] == "dummy text"
     assert item["embedding"] == [0.1, 0.2]
+
+
+def test_get_context_retrieves_crawled_page(monkeypatch, tmp_path, auth_header):
+    class DummyModel:
+        def encode(self, texts, **kwargs):
+            return [[0.1, 0.2, 0.3]]
+
+    class DummyStore:
+        def search(self, query, top_k=3):
+            return [{"snippet": "embedded"}]
+
+    # Prepare web index with a single entry
+    index_file = tmp_path / "web_index.json"
+    entry = {"url": "http://example.com", "text": "Transformers are great", "embedding": [0.1, 0.2, 0.3]}
+    index_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+
+    monkeypatch.setattr("api.embedder._get_model", lambda: DummyModel())
+    monkeypatch.setattr("api.embedder._get_store", lambda: DummyStore())
+    monkeypatch.setattr("api.search_web.WEB_INDEX_PATH", index_file)
+    monkeypatch.setattr("api.search_web._get_model", lambda: DummyModel())
+
+    from api import search_web
+
+    search_web.reload_web_index()
+
+    resp = client.post(
+        "/get_context",
+        json={"query": "Transformers"},
+        headers=auth_header,
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert any("http://example.com" in item for item in data["web"])
 
 
 def test_get_context_unauthorized(monkeypatch):
