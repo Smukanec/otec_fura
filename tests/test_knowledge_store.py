@@ -29,9 +29,9 @@ def test_reindex_nested_files(tmp_path, monkeypatch):
     ks = KnowledgeStore(str(store_dir))
     monkeypatch.setattr(KnowledgeStore, "_embed", _dummy_embed, raising=False)
 
-    res1 = ks.reindex_folder(str(data_dir))
+    res1 = ks.rebuild_folder(str(data_dir))
     assert res1 == {"docs": 3, "chunks": 3}
-    res2 = ks.reindex_folder(str(data_dir))
+    res2 = ks.rebuild_folder(str(data_dir))
     assert res2 == {"docs": 3, "chunks": 3}
     assert len(ks._docs) == 3
     assert ks._vectors.shape[0] == 3

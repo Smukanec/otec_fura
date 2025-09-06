@@ -108,7 +108,7 @@ async def knowledge_add(body: AddNote, u=Depends(current_user)):
 
 @app.post("/admin/reindex_knowledge")
 async def admin_reindex(u=Depends(current_user)):
-    res = ks.reindex_folder(KNOW_DIR)
+    res = ks.rebuild_folder(KNOW_DIR)
     return {"ok": True, **res}
 
 

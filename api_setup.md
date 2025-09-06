@@ -21,7 +21,7 @@ CrawlReq: {"url": str?, "raw_text": str?, "title": str?, "tags": [str]?}
 Endpoints
 Metoda & URL	Vstup	Odpověď	Popis
 POST /knowledge/add	AddNote	{"ok": True, "id": str, "title": str, "chunks": int}	Uloží ručně zadaný text do znalostní databáze (FAISS + metadata).
-POST /admin/reindex_knowledge	–	{"ok": True, "docs": int, "chunks": int}	Znovu projde soubory ve složce knowledge/ a rebuilduje index.
+POST /admin/reindex_knowledge	–	{"ok": True, "docs": int, "chunks": int}	Provede kompletní rebuild: smaže uložené dokumenty i vektory a znovu projde soubory ve složce knowledge/
 POST /knowledge/search	SearchReq	{"results": [...]}	Vyhledá podobné úryvky v indexu. Každý výsledek obsahuje title, source, tags, score, snippet.
 POST /crawl	CrawlReq	- Pro raw_text: {"ok": True, "mode": "raw_text", "id": str, "title": str, "chunks": int} - Pro url: {"ok": True, "mode": "url", "id": str, "title": str, "chunks": int}	Přidá do znalostní báze buď zadaný text, nebo stáhne obsah z URL a zaindexuje jej. Chybí-li oboje, vrací 400.
 POST /get_context	{"query": str, "user": str=\"anonymous\", "remember": bool=False}	{"memory": [...], "knowledge": [...], "embedding": [...]}	Vrací kontext z paměti i znalostí. Pokud remember=True, dotaz se uloží do privátní paměti uživatele.
