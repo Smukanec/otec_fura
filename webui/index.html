@@ -6,14 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     :root {
-      --bg: #0c0f0c;
-      --panel: #121612;
-      --text: #cde6cd;
-      --muted: #8cab8c;
-      --accent: #35d16f;
-      --accent-2: #19a354;
-      --danger: #ff4d4f;
-      --border: #1e241e;
+      --bg: #000000;
+      --panel: #000000;
+      --text: #00ff00;
+      --muted: #00ff00;
+      --accent: #00ff00;
+      --accent-2: #00ff00;
+      --danger: #00ff00;
+      --border: #00ff00;
       --shadow: rgba(0,0,0,0.35);
       --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       --sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji";
@@ -26,10 +26,10 @@
     header {
       position: sticky; top: 0; z-index: 5;
       display: flex; align-items: center; gap: .8rem;
-      padding: .8rem 1rem; background: linear-gradient(180deg, #101410 0%, #0c0f0c 100%);
+      padding: .8rem 1rem; background: var(--bg);
       border-bottom: 1px solid var(--border); box-shadow: 0 6px 20px var(--shadow);
     }
-    #logo { height: 28px; width: 28px; filter: drop-shadow(0 0 6px rgba(53,209,111,.5)); }
+    #logo { height: 28px; width: 28px; filter: drop-shadow(0 0 6px rgba(0,255,0,.5)); }
     #logo.spin { animation: spin 1.2s linear infinite; }
     @keyframes spin { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
 
@@ -47,28 +47,28 @@
     .row { display:flex; align-items:center; gap:8px; flex-wrap: wrap; }
     .sep { height: 8px; }
     input[type="password"], input[type="text"], select, textarea {
-      width: 100%; box-sizing: border-box; background: #0f140f; color: var(--text);
+      width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text);
       border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; outline: none;
     }
     textarea { min-height: 100px; resize: vertical; font-family: var(--sans); }
     .btn {
-      background: var(--accent); color: #001a0a; border: none; padding: 8px 12px; border-radius: 8px;
-      font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(53,209,111,.25);
+      background: var(--bg); color: var(--text); border: 1px solid var(--border); padding: 8px 12px; border-radius: 8px;
+      font-weight: 600; cursor: pointer; box-shadow: 0 6px 16px rgba(0,255,0,.25);
     }
     .btn:hover { filter: brightness(1.06); }
-    .ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .ghost { background: var(--bg); color: var(--text); border: 1px solid var(--border); }
     .small { font-size: 12px; color: var(--muted); }
     .hidden { display: none !important; }
     pre.block {
-      background:#0f140f; border:1px solid var(--border); border-radius:8px; padding:8px; overflow:auto; max-height:40vh;
+      background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px; overflow:auto; max-height:40vh;
       font-family: var(--mono); white-space: pre-wrap;
     }
     #chat { display:flex; flex-direction:column; gap:10px; min-height: 50vh; }
     #messages { display:flex; flex-direction:column; gap:10px; }
     .msg { padding:10px 12px; border-radius:10px; border:1px solid var(--border); }
-    .user { background:#0e160f; }
-    .ai   { background:#0a140c; }
-    .system { background:#131313; color:#aaa; }
+    .user { background:var(--bg); }
+    .ai   { background:var(--bg); }
+    .system { background:var(--bg); color:var(--text); }
     option.uncensored { color: var(--danger); font-weight: 600; }
     .tip { color: var(--muted); font-size: 12px; margin-top: 4px; }
     @media (max-width: 980px) {
@@ -104,7 +104,7 @@
         <option value="auto" selected>Automatický výběr</option>
         <!-- dynamicky doplníme z /v1/models -->
       </select>
-      <div class="tip">„uncensored“ modely jsou <b style="color:#ff4d4f">červené</b> a nevybírají se v režimu „Automaticky“.</div>
+      <div class="tip">„uncensored“ modely jsou <b style="color:var(--danger)">červené</b> a nevybírají se v režimu „Automaticky“.</div>
 
       <div class="sep"></div>
 
