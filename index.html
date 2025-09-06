@@ -3,38 +3,38 @@
   <title>Otec Fura</title>
   <style>
     :root{
-      --bg:#0a0a0a; --panel:#0f1b14; --accent:#00ff88; --accent2:#17a66a; --text:#c9f5e3; --border:#0c5b3a; --muted:#7bd8b1;
+      --bg:#000000; --panel:#000000; --accent:#00ff00; --accent2:#00ff00; --text:#00ff00; --border:#00ff00; --muted:#00ff00;
     }
     *{box-sizing:border-box}
     html,body{height:100%}
     body{margin:0;background:var(--bg);color:var(--text);font-family:ui-monospace,Menlo,Consolas,monospace}
-    header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);background:linear-gradient(180deg,#0d1410,#0a0a0a);position:sticky;top:0;z-index:5}
+    header{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--border);background:var(--bg);position:sticky;top:0;z-index:5}
     header img.logo{height:42px;filter:drop-shadow(0 0 6px rgba(0,255,136,.25))}
     header h1{margin:0;font-size:20px;color:var(--accent)}
     .wrap{display:grid;grid-template-columns:1fr 340px;gap:16px;padding:16px}
     @media(max-width:1100px){.wrap{grid-template-columns:1fr}}
-    .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:0 0 0 1px rgba(0,255,136,.05),0 8px 24px rgba(0,0,0,.25)}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px}
     .controls{display:grid;grid-template-columns:repeat(4,minmax(160px,1fr));gap:12px}
     @media(max-width:900px){.controls{grid-template-columns:1fr 1fr}}
     label.small{font-size:12px;color:var(--muted);display:block;margin-bottom:6px}
-    input[type="text"],select,textarea{width:100%;background:#111;color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 12px;outline:none}
+    input[type="text"],select,textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px 12px;outline:none}
     textarea{min-height:96px;resize:vertical}
-    .btn{background:#0b3a26;color:var(--accent);border:1px solid var(--accent2);padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:600}
-    .btn.secondary{background:#0e1110;border-color:var(--border);color:var(--muted)}
+    .btn{background:var(--bg);color:var(--text);border:1px solid var(--border);padding:10px 14px;border-radius:12px;cursor:pointer;font-weight:600}
+    .btn.secondary{background:var(--bg);border-color:var(--border);color:var(--text)}
     .modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.9);display:flex;align-items:center;justify-content:center;z-index:10}
     .modal{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;box-shadow:0 0 0 1px rgba(0,255,136,.05),0 8px 24px rgba(0,0,0,.25);width:320px;display:flex;flex-direction:column;gap:12px}
     .row{display:flex;gap:8px;align-items:center;margin-top:8px}
-    .pill{display:inline-flex;align-items:center;gap:6px;background:#0c1511;border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:4px 10px;font-size:12px}
+    .pill{display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:999px;padding:4px 10px;font-size:12px}
     #chat{height:480px;overflow:auto;display:flex;flex-direction:column;gap:12px;padding-right:6px}
-    .bubble{border:1px solid var(--border);border-radius:14px;padding:12px;background:#0c1411}
-    .q{border-left:3px solid #2d7c57}.a{border-left:3px solid var(--accent2)}
+    .bubble{border:1px solid var(--border);border-radius:14px;padding:12px;background:var(--bg)}
+    .q{border-left:3px solid var(--border)}.a{border-left:3px solid var(--border)}
     .meta{font-size:11px;color:var(--muted);display:flex;gap:8px;margin-bottom:6px}
     .role{font-weight:700;color:var(--accent)}
     pre{white-space:pre-wrap;word-wrap:break-word}
-    details{border:1px solid var(--border);border-radius:12px;padding:8px 10px;background:#0b1210}
+    details{border:1px solid var(--border);border-radius:12px;padding:8px 10px;background:var(--bg)}
     details summary{cursor:pointer;color:var(--accent)}
-    .progress{height:3px;background:#0e1c16;border-radius:99px;overflow:hidden;margin-top:10px;display:none}
-    .progress .bar{height:100%;width:20%;background:linear-gradient(90deg,rgba(0,255,136,.3),rgba(0,255,136,.8));animation:load 1s infinite linear}
+    .progress{height:3px;background:var(--bg);border-radius:99px;overflow:hidden;margin-top:10px;display:none}
+    .progress .bar{height:100%;width:20%;background:var(--text);animation:load 1s infinite linear}
     @keyframes load{from{transform:translateX(-100%)}to{transform:translateX(500%)}}
   </style>
 </head>
