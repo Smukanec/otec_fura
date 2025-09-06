@@ -19,7 +19,7 @@ import math
 import re
 from collections import Counter
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 # Path to the knowledge directory relative to this file
 KNOWLEDGE_DIR = Path(__file__).resolve().parents[1] / "knowledge"
@@ -28,15 +28,45 @@ _documents: List[str] = []
 _doc_tokens: List[List[str]] = []
 _idf: dict[str, float] = {}
 _avgdl: float = 0.0
+_file_mtimes: Dict[Path, float] = {}
 _loaded = False
+
+
+def reload_knowledge() -> None:
+    """Clear cached knowledge and mark it as unloaded."""
+
+    global _documents, _doc_tokens, _idf, _avgdl, _file_mtimes, _loaded
+    _documents = []
+    _doc_tokens = []
+    _idf = {}
+    _avgdl = 0.0
+    _file_mtimes = {}
+    _loaded = False
+
+
+def _files_changed() -> bool:
+    """Return ``True`` if files in ``KNOWLEDGE_DIR`` changed since last load."""
+
+    if not KNOWLEDGE_DIR.exists():
+        return bool(_file_mtimes)
+
+    current: Dict[Path, float] = {}
+    for path in KNOWLEDGE_DIR.glob("**/*.txt"):
+        try:
+            current[path] = path.stat().st_mtime
+        except OSError:
+            return True
+    return current != _file_mtimes
 
 
 def _load_knowledge() -> None:
     """Load documents and pre-compute statistics for BM25."""
 
-    global _loaded, _documents, _doc_tokens, _idf, _avgdl
-    if _loaded:
+    global _loaded, _documents, _doc_tokens, _idf, _avgdl, _file_mtimes
+    if _loaded and not _files_changed():
         return
+
+    reload_knowledge()
 
     if not KNOWLEDGE_DIR.exists():
         _loaded = True
@@ -50,6 +80,10 @@ def _load_knowledge() -> None:
             continue
         _documents.append(text)
         _doc_tokens.append(re.findall(r"\w+", text.lower()))
+        try:
+            _file_mtimes[path] = path.stat().st_mtime
+        except OSError:
+            pass
 
     if not _documents:
         _loaded = True
