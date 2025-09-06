@@ -231,18 +231,13 @@ class KnowledgeStore:
         self._add_vectors(vecs, entries)
         return doc_id, len(chunks)
 
-    def reindex_folder(self, folder: str, clear: bool = True) -> Dict[str,int]:
+    def reindex_folder(self, folder: str) -> Dict[str, int]:
+        """Index all supported files from ``folder`` and append them to the current
+        store without clearing existing data.  This can lead to duplicates when
+        called repeatedly.  Use :meth:`rebuild_folder` to perform a clean
+        rebuild."""
         folder = os.path.abspath(folder)
         os.makedirs(folder, exist_ok=True)
-        if clear:
-            self._docs = []
-            self._vectors = np.zeros((0, self._dim), dtype="float32")
-            self._entries = []
-            self._index = faiss.IndexFlatIP(self._dim)
-            for p in (self.store_path, self.index_path):
-                if os.path.exists(p):
-                    os.remove(p)
-            open(self.store_path, "w", encoding="utf-8").close()
         added_docs = 0
         added_chunks = 0
         for root_dir, _, files in os.walk(folder):
@@ -254,6 +249,28 @@ class KnowledgeStore:
                 added_docs += 1
                 added_chunks += n
         return {"docs": added_docs, "chunks": added_chunks}
+
+    def rebuild_folder(self, folder: str) -> Dict[str, int]:
+        """Clear existing documents and vectors and rebuild the store from the
+        contents of ``folder``.  The updated store and index are persisted even
+        if ``folder`` is empty."""
+        folder = os.path.abspath(folder)
+        os.makedirs(folder, exist_ok=True)
+        # reset in-memory structures
+        self._docs = []
+        self._vectors = np.zeros((0, self._dim), dtype="float32")
+        self._entries = []
+        self._index = faiss.IndexFlatIP(self._dim)
+        # remove existing persisted files
+        for p in (self.store_path, self.index_path):
+            if os.path.exists(p):
+                os.remove(p)
+        open(self.store_path, "w", encoding="utf-8").close()
+
+        res = self.reindex_folder(folder)
+        # ensure an index file exists even when there are no documents
+        self._save_index()
+        return res
 
     def search(self, query: str, top_k=5) -> List[Dict]:
         if not query.strip() or self._index is None or self._vectors.shape[0] == 0:
