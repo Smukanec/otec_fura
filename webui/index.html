@@ -63,16 +63,44 @@
       background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:8px; overflow:auto; max-height:40vh;
       font-family: var(--mono); white-space: pre-wrap;
     }
-    #chat { display:flex; flex-direction:column; gap:10px; min-height: 50vh; }
-    #messages { display:flex; flex-direction:column; gap:10px; }
-    .msg { padding:10px 12px; border-radius:10px; border:1px solid var(--border); }
-    .user { background:var(--bg); }
-    .ai   { background:var(--bg); }
-    .system { background:var(--bg); color:var(--text); }
+
+    /* ===== Chat layout: scrollovací zprávy ===== */
+    #chat {
+      display: grid;
+      grid-template-rows: 1fr auto;   /* zprávy vyplní dostupnou výšku, editor je dole */
+      gap: 10px;
+      min-height: 60vh;
+      max-height: 75vh;               /* aby se panel neroztahoval donekonečna */
+    }
+    #messages {
+      display:flex; flex-direction:column; gap:10px;
+      overflow-y: auto;               /* klíčové: rolujeme */
+      padding-right: 4px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+
+    /* ===== Bubliny + označení role ===== */
+    .msg {
+      padding:10px 12px; border-radius:10px; border:1px solid var(--border);
+      position: relative;
+    }
+    .msg::before {
+      content: attr(data-role);
+      position: absolute; top: -9px; left: 10px;
+      font-size: 11px; padding: 0 6px;
+      background: var(--bg);
+      color: var(--muted);
+    }
+    .user { border-left: 3px solid var(--accent); }
+    .ai   { border-left: 3px solid var(--accent-2); }
+    .system { border-left: 3px solid var(--danger); opacity: .9; }
+
     option.uncensored { color: var(--danger); font-weight: 600; }
     .tip { color: var(--muted); font-size: 12px; margin-top: 4px; }
     @media (max-width: 980px) {
       main.grid { grid-template-columns: 1fr; }
+      #chat { max-height: unset; } /* na mobilu necháme přirozenou výšku */
     }
   </style>
 </head>
@@ -158,6 +186,11 @@
         <summary>🧪 Debug</summary>
         <pre id="debug" class="block small">(žádný)</pre>
       </details>
+      <div style="height:8px"></div>
+      <details open>
+        <summary>🧬 Model</summary>
+        <pre id="modelMeta" class="block small">(není vybráno)</pre>
+      </details>
     </aside>
   </main>
 
@@ -172,6 +205,7 @@
     const whoSpan     = $('#who');
     const logoutBtn   = $('#logout');
     const modelSel    = $('#model');
+    const modelMetaPre= $('#modelMeta');
     const memoryRadios= () => document.querySelector('input[name="memory"]:checked')?.value || 'public';
     const websearchCb = $('#websearch');
     const fileInput   = $('#file');
@@ -187,6 +221,7 @@
     const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
     let state = loadState();
+    let modelsMap = Object.create(null); // id -> raw model object
 
     function loadState() {
       try {
@@ -214,7 +249,6 @@
     }
 
     function preferAutoModel(list) {
-      // vyber preferovaný „bezpečný“ model
       const prefer = ['llama3.1:8b', 'llama3:8b', 'qwen2.5:7b', 'mistral:7b', 'phi3'];
       for (const p of prefer) {
         const hit = list.find(m => !m.unc && m.id.toLowerCase().includes(p));
@@ -226,9 +260,12 @@
 
     function addMessage(role, text) {
       const div = document.createElement('div');
+      const label = role === 'user' ? 'Ty' : (role === 'ai' ? 'Jarvik' : 'Systém');
       div.className = 'msg ' + (role === 'user' ? 'user' : role === 'ai' ? 'ai' : 'system');
+      div.setAttribute('data-role', label);
       div.textContent = text;
       messagesBox.appendChild(div);
+      // rolovat dolů
       messagesBox.scrollTop = messagesBox.scrollHeight;
     }
 
@@ -243,16 +280,47 @@
       }
     }
 
+    function renderModelMeta(id) {
+      if (!id || id === 'auto') {
+        modelMetaPre.textContent = '(automatický výběr – konkrétní model se ukáže po odpovědi)';
+        return;
+      }
+      const m = modelsMap[id];
+      if (!m) {
+        modelMetaPre.textContent = `id: ${id}\n(detaily zatím neznám)`;
+        return;
+      }
+      // Zkusíme z typických klíčů vytěžit metadata; fallback: JSON
+      const lines = [];
+      const push = (k, v) => { if (v !== undefined && v !== null && v !== '') lines.push(`${k}: ${v}`); };
+      push('id', m.id || m.name);
+      push('family', m.family || m.base_model || m.architecture);
+      push('size', m.size || m.parameters || m.params);
+      push('context', m.context_length || m.ctxlen || m.ctx || m.max_context);
+      push('quant', m.quantization || m.quant || m.dtype);
+      push('variant', m.variant || m.format);
+      if (!lines.length) {
+        modelMetaPre.textContent = JSON.stringify(m, null, 2);
+      } else {
+        modelMetaPre.textContent = lines.join('\n');
+      }
+    }
+
     // ---- dynamické načtení modelů ----
     async function loadModels() {
-      // pokud není klíč a backend ho vyžaduje, volání selže – necháme fallback
       try {
         const resp = await fetch('/v1/models', { headers: authHeaders() });
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const data = await resp.json();
-        // OpenAI-like: {data:[{id:"...", ...}, ...]}
         const arr = Array.isArray(data?.data) ? data.data : Array.isArray(data) ? data : [];
         if (!arr.length) throw new Error('empty models');
+
+        // mapa id -> raw
+        modelsMap = Object.create(null);
+        for (const m of arr) {
+          const id = m.id || m.name;
+          if (id) modelsMap[id] = m;
+        }
 
         // vyčistit a znovu naplnit select
         const keepAuto = modelSel.querySelector('option[value="auto"]');
@@ -268,11 +336,9 @@
           const entry = { id, unc: isUncensored(id) };
           (entry.unc ? unc : safe).push(entry);
         }
-        // mírně setřídit
         safe.sort((a,b)=>a.id.localeCompare(b.id));
         unc.sort((a,b)=>a.id.localeCompare(b.id));
 
-        // přidat do selectu
         const add = (group, list, cls) => {
           if (!list.length) return;
           const og = document.createElement('optgroup');
@@ -288,15 +354,17 @@
         };
         add('Doporučené / bezpečné', safe, '');
         add('Uncensored ⚠️ (nepoužije se v „Automaticky“)', unc, 'uncensored');
+
+        // po načtení rovnou vykresli meta pro aktuální volbu (bude to "auto")
+        renderModelMeta(modelSel.value);
       } catch (e) {
-        // fallback: nic neděláme, v selectu už je "Automatický výběr"
         console.warn('loadModels fallback:', e);
-        // volitelně můžeme doplnit pár defaultů:
         ['llama3:8b','mistral','qwen2.5:7b'].forEach(id=>{
           const opt = document.createElement('option');
           opt.value = id; opt.textContent = id;
           modelSel.appendChild(opt);
         });
+        renderModelMeta(modelSel.value);
       }
     }
 
@@ -320,9 +388,8 @@
       // výběr modelu
       let chosen = modelSel.value || 'auto';
       if (chosen === 'auto') {
-        // vyčteme aktuální vložené options (s označením uncensored)
-        const opts = [...modelSel.querySelectorAll('option')].filter(o=>o.value && o.value !== 'auto');
-        const arr = opts.map(o=>({ id: o.value, unc: o.classList.contains('uncensored') }));
+        const allOpts = [...modelSel.querySelectorAll('option')].filter(o=>o.value && o.value !== 'auto');
+        const arr = allOpts.map(o=>({ id: o.value, unc: o.classList.contains('uncensored') }));
         chosen = preferAutoModel(arr);
       }
 
@@ -357,8 +424,9 @@
         downloadA.href = url;
         downloadA.classList.remove('hidden');
 
-        // kontext info
+        // kontext + metadata
         ctxPre.textContent = `model: ${chosen}\nwebsearch: ${!!websearchCb.checked}\nmemory: ${memoryRadios()}`;
+        renderModelMeta(chosen);
       } catch (e) {
         addMessage('system', 'Chyba: ' + (e?.message || e));
       } finally {
@@ -395,6 +463,8 @@
       promptEl.addEventListener('keydown', (e)=>{
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
       });
+
+      modelSel.addEventListener('change', () => renderModelMeta(modelSel.value));
     })();
   </script>
 </body>
