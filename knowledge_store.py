@@ -231,19 +231,28 @@ class KnowledgeStore:
         self._add_vectors(vecs, entries)
         return doc_id, len(chunks)
 
-    def reindex_folder(self, folder: str) -> Dict[str,int]:
+    def reindex_folder(self, folder: str, clear: bool = True) -> Dict[str,int]:
         folder = os.path.abspath(folder)
         os.makedirs(folder, exist_ok=True)
+        if clear:
+            self._docs = []
+            self._vectors = np.zeros((0, self._dim), dtype="float32")
+            self._entries = []
+            self._index = faiss.IndexFlatIP(self._dim)
+            for p in (self.store_path, self.index_path):
+                if os.path.exists(p):
+                    os.remove(p)
+            open(self.store_path, "w", encoding="utf-8").close()
         added_docs = 0
         added_chunks = 0
-        for name in os.listdir(folder):
-            p = os.path.join(folder, name)
-            if not os.path.isfile(p): continue
-            if not any(name.lower().endswith(ext) for ext in (".md",".txt",".pdf")):
-                continue
-            doc_id, n = self.add_from_file(p)
-            added_docs += 1
-            added_chunks += n
+        for root_dir, _, files in os.walk(folder):
+            for name in files:
+                if not any(name.lower().endswith(ext) for ext in (".md", ".txt", ".pdf")):
+                    continue
+                p = os.path.join(root_dir, name)
+                doc_id, n = self.add_from_file(p)
+                added_docs += 1
+                added_chunks += n
         return {"docs": added_docs, "chunks": added_chunks}
 
     def search(self, query: str, top_k=5) -> List[Dict]:
