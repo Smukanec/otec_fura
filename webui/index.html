@@ -1,14 +1,27 @@
 <!DOCTYPE html>
 <html lang="cs">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>Jarvik – Fura</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- DŮLEŽITÉ: UI běží pod /app/, proto relativní cesty míří do stejné složky -->
+  <link rel="preload" href="style.css" as="style" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header>
-    <img src="logo.png" alt="Jarvik logo" id="logo">
-    <h1>Jarvik – Fura</h1>
+  <header class="topbar">
+    <div class="brand">
+      <img src="logo.png" alt="Jarvik" id="logo">
+      <h1>Jarvik – Fura</h1>
+      <div id="busy" class="dot" title="Stav"></div>
+    </div>
+    <nav class="actions">
+      <label class="switch">
+        <input id="websearch" type="checkbox">
+        <span>Websearch</span>
+      </label>
+      <button id="newChat" class="btn ghost">Nový chat</button>
+    </nav>
   </header>
 
   <main class="grid">
@@ -17,20 +30,28 @@
       <div id="apikeyRow" class="row">
         <label>API Key</label>
         <input id="apikey" type="password" placeholder="Zadej API klíč…">
+        <button id="saveKey" class="btn">Uložit</button>
       </div>
 
       <div id="whoRow" class="row hidden">
         <label>Uživatel</label>
-        <span id="who">?</span>
+        <span id="who">–</span>
+        <button id="logout" class="btn ghost small">Odhlásit</button>
       </div>
 
       <div class="sep"></div>
 
       <label>Model</label>
+      <div class="row">
+        <label class="switch">
+          <input id="autoModel" type="checkbox" checked>
+          <span>Automatický výběr</span>
+        </label>
+      </div>
       <select id="model">
-        <option value="auto">Automatický výběr</option>
         <option value="llama3:8b">LLaMA 3 (8B)</option>
         <option value="mistral">Mistral</option>
+        <option value="qwen2">Qwen2</option>
       </select>
 
       <div class="sep"></div>
@@ -44,14 +65,11 @@
       <div class="sep"></div>
 
       <label>Přiložit TXT k dotazu</label>
-      <input id="file" type="file" accept=".txt,text/plain">
+      <input id="file" type="file" accept=".txt,text/plain" />
 
       <div class="sep"></div>
 
-      <div class="row">
-        <button id="newChat" class="btn ghost">Nový chat</button>
-        <span class="small" id="ttlInfo" title="Historie se drží 7 dní">⏳ 7 dní</span>
-      </div>
+      <div class="muted small">Historie chatu se drží 7 dní (nebo dokud nezvolíš „Nový chat“).</div>
     </section>
 
     <!-- chat -->
@@ -59,12 +77,11 @@
       <div id="chat">
         <div id="messages" aria-live="polite"></div>
 
-        <div>
+        <div class="composer">
           <label>Dotaz</label>
           <textarea id="prompt" placeholder="Zadej dotaz… (Enter = odeslat, Shift+Enter = nový řádek)"></textarea>
-          <div class="row" style="margin-top:.4rem">
+          <div class="row gap">
             <button id="send" class="btn">Odeslat</button>
-            <!-- FIX: anchor místo buttonu -->
             <a id="download" class="btn ghost hidden" download="odpoved.txt">Stáhnout odpověď (.txt)</a>
           </div>
         </div>
