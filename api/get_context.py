@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from api.get_memory import load_memory_context, append_to_memory
 from api.search_knowledge import search_knowledge
 from api.embedder import embed_and_query
+from api.search_web import search_web
 
 router = APIRouter()
 
@@ -22,6 +23,7 @@ async def get_context(body: GetContextRequest):
     memory_ctx = load_memory_context(user, query)
     knowledge_ctx = search_knowledge(query)
     embed_ctx = embed_and_query(query)
+    web_ctx = search_web(query)
 
     if remember and query.strip():
         append_to_memory(user, f"{query} - Zaznamenán dotaz přes /get_context.")
@@ -30,4 +32,5 @@ async def get_context(body: GetContextRequest):
         "memory": memory_ctx,
         "knowledge": knowledge_ctx,
         "embedding": embed_ctx,
+        "web": web_ctx,
     }

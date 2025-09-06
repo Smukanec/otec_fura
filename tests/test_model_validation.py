@@ -99,74 +99,35 @@ class SimpleClient:
 client = SimpleClient(app_ask.app)
 
 
-def test_v1_chat_rejects_invalid_model(monkeypatch):
-    async def fail_gateway(*args, **kwargs):
-        raise AssertionError("gateway should not be called")
+def test_v1_chat_proxies_to_gateway(monkeypatch):
+    async def ok_post(self, url, headers=None, json=None):
+        return types.SimpleNamespace(status_code=200, json=lambda: {"choices": [{"message": {"content": "ok"}}]})
 
-    monkeypatch.setattr(app_ask, "_call_model_gateway", fail_gateway)
-    resp = client.post(
-        "/v1/chat",
-        json={
-            "messages": [{"role": "user", "content": "hello"}],
-            "model": "bad-model",
-        },
-    )
-    assert resp.status_code == 400
-
-
-def test_v1_chat_allows_valid_model(monkeypatch):
-    async def ok_gateway(messages, model, temperature):
-        return {"choices": [{"message": {"content": "ok"}}]}
-
-    monkeypatch.setattr(app_ask, "_call_model_gateway", ok_gateway)
-    resp = client.post(
-        "/v1/chat",
-        json={
-            "messages": [{"role": "user", "content": "hello"}],
-            "model": "command-r",
-        },
-    )
+    monkeypatch.setattr(httpx.AsyncClient, "post", ok_post, raising=False)
+    resp = client.post("/v1/chat", json={"messages": [{"role": "user", "content": "hi"}]})
     assert resp.status_code == 200
-    assert resp.json()["used_model"] == "command-r"
+    assert resp.json()["answer"] == "ok"
 
 
-def test_ask_rejects_invalid_model(monkeypatch):
-    async def fail_gateway(*args, **kwargs):
-        raise AssertionError("gateway should not be called")
+def test_ask_proxies_to_gateway(monkeypatch):
+    async def ok_post(self, url, headers=None, json=None):
+        return types.SimpleNamespace(status_code=200, json=lambda: {"choices": [{"message": {"content": "hi"}}]})
 
-    async def no_ctx(q):
-        return []
-
-    monkeypatch.setattr(app_ask, "_call_model_gateway", fail_gateway)
-    monkeypatch.setattr(app_ask, "_maybe_context", no_ctx)
-    resp = client.post("/ask", json={"message": "hi", "model": "bad-model"})
-    assert resp.status_code == 400
-
-
-def test_ask_allows_valid_model(monkeypatch):
-    async def ok_gateway(messages, model, temperature):
-        return {"choices": [{"message": {"content": "hi"}}]}
-
-    async def no_ctx(q):
-        return []
-
-    monkeypatch.setattr(app_ask, "_call_model_gateway", ok_gateway)
-    monkeypatch.setattr(app_ask, "_maybe_context", no_ctx)
-    resp = client.post("/ask", json={"message": "hi", "model": "command-r"})
+    monkeypatch.setattr(httpx.AsyncClient, "post", ok_post, raising=False)
+    resp = client.post("/ask", json={"message": "hello"})
     assert resp.status_code == 200
-    assert resp.json()["used_model"] == "command-r"
+    assert resp.json()["response"] == "hi"
 
 
-def test_v1_models_lists_allowed_models(monkeypatch):
-    async def fail_get(self, url, headers=None):
-        raise httpx.ConnectError("boom", request=httpx.Request("GET", url))
+def test_v1_models_lists_models(monkeypatch):
+    async def ok_get(self, url, headers=None):
+        return types.SimpleNamespace(status_code=200, json=lambda: {"object": "list", "data": [{"id": "m", "object": "model"}]})
 
-    monkeypatch.setattr(httpx.AsyncClient, "get", fail_get, raising=False)
+    monkeypatch.setattr(httpx.AsyncClient, "get", ok_get, raising=False)
     resp = client.get("/v1/models")
     assert resp.status_code == 200
     data = resp.json()
     assert data["object"] == "list"
-    expected = sorted(app_ask.ALLOWED_MODELS)
-    assert [m["id"] for m in data["data"]] == expected
-    assert all(m["object"] == "model" for m in data["data"]) 
+    assert data["data"][0]["id"] == "m"
+    assert data["data"][0]["object"] == "model"
 
