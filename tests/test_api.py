@@ -151,10 +151,16 @@ def test_user_endpoint_unauthorized():
 
 
 def test_get_context(monkeypatch, auth_header):
-    def dummy_embed(query: str, top_k: int = 3):
-        return [f"embedded:{query}"]
+    class DummyModel:
+        def encode(self, texts, **kwargs):
+            return [[0.1, 0.2, 0.3]]
 
-    monkeypatch.setattr("api.get_context.embed_and_query", dummy_embed)
+    class DummyStore:
+        def search(self, query, top_k=3):
+            return [{"snippet": f"embedded:{query}"}]
+
+    monkeypatch.setattr("api.embedder._get_model", lambda: DummyModel())
+    monkeypatch.setattr("api.embedder._get_store", lambda: DummyStore())
 
     resp = client.post(
         "/get_context",
